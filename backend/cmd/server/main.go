@@ -17,6 +17,7 @@ import (
 
 	"github.com/zzzpize/dndgo/backend/internal/auth"
 	"github.com/zzzpize/dndgo/backend/internal/bestiary"
+	"github.com/zzzpize/dndgo/backend/internal/character"
 	"github.com/zzzpize/dndgo/backend/internal/game"
 	"github.com/zzzpize/dndgo/backend/internal/store"
 )
@@ -52,6 +53,8 @@ func main() {
 	st := store.New(pool)
 	authHandler := auth.NewHandler(st, jwtSecret)
 	gameHandler := game.NewHandler(st)
+	charHandler := character.NewHandler(st)
+	bestiaryHandler := bestiary.NewHandler(st)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -80,6 +83,22 @@ func main() {
 			r.Post("/join", gameHandler.JoinRoom)
 			r.Get("/{code}", gameHandler.GetRoom)
 			r.Delete("/{code}", gameHandler.DeleteRoom)
+			r.Post("/{code}/characters", charHandler.Create)
+			r.Get("/{code}/characters", charHandler.ListByRoom)
+		})
+
+		r.Route("/characters", func(r chi.Router) {
+			r.Use(auth.JWT(jwtSecret))
+			r.Get("/{id}", charHandler.Get)
+			r.Put("/{id}", charHandler.Update)
+			r.Patch("/{id}/hp", charHandler.PatchHP)
+			r.Delete("/{id}", charHandler.Delete)
+		})
+
+		r.Route("/bestiary", func(r chi.Router) {
+			r.Use(auth.JWT(jwtSecret))
+			r.Get("/", bestiaryHandler.List)
+			r.Get("/{id}", bestiaryHandler.Get)
 		})
 	})
 
