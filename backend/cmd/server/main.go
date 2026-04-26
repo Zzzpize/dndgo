@@ -9,12 +9,16 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chimw "github.com/go-chi/chi/v5/middleware"
 	migrate "github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/zzzpize/dndgo/backend/internal/auth"
 	"github.com/zzzpize/dndgo/backend/internal/bestiary"
+	"github.com/zzzpize/dndgo/backend/internal/game"
+	"github.com/zzzpize/dndgo/backend/internal/store"
 )
 
 func main() {
@@ -26,6 +30,11 @@ func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is required")
+	}
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is required")
 	}
 
 	runMigrations(dbURL)
@@ -40,14 +49,38 @@ func main() {
 		}
 	}
 
+	st := store.New(pool)
+	authHandler := auth.NewHandler(st, jwtSecret)
+	gameHandler := game.NewHandler(st)
+
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestID)
+	r.Use(chimw.Logger)
+	r.Use(chimw.Recoverer)
+	r.Use(chimw.RequestID)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register", authHandler.Register)
+			r.Post("/login", authHandler.Login)
+			r.Group(func(r chi.Router) {
+				r.Use(auth.JWT(jwtSecret))
+				r.Get("/me", authHandler.Me)
+			})
+		})
+
+		r.Route("/rooms", func(r chi.Router) {
+			r.Use(auth.JWT(jwtSecret))
+			r.Post("/", gameHandler.CreateRoom)
+			r.Get("/", gameHandler.ListRooms)
+			r.Post("/join", gameHandler.JoinRoom)
+			r.Get("/{code}", gameHandler.GetRoom)
+			r.Delete("/{code}", gameHandler.DeleteRoom)
+		})
 	})
 
 	log.Printf("server starting on :%s", port)
