@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
 
@@ -16,6 +16,7 @@ RUN apk add --no-cache ca-certificates wget
 WORKDIR /app
 
 COPY --from=builder /build/server .
+COPY --from=builder /build/db/migrations ./db/migrations
 
 EXPOSE 8080
 
