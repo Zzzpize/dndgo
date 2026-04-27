@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package events;
+
+option go_package = "github.com/zzzpize/dndgo/backend/gen/proto";
+
+import "google/protobuf/timestamp.proto";
+
+message GameEvent {
+    string event_id   = 1;
+    string room_id    = 2;
+    string event_type = 3;
+    string user_id    = 4;
+    bytes  payload    = 5;
+    google.protobuf.Timestamp occurred_at = 6;
+}

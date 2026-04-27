@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"github.com/zzzpize/dndgo/backend/internal/events"
 	"github.com/zzzpize/dndgo/backend/internal/store"
 )
 
@@ -62,16 +63,36 @@ type Room struct {
 }
 
 type Hub struct {
-	rooms map[string]*Room
-	mu    sync.RWMutex
-	store *store.Store
+	rooms    map[string]*Room
+	mu       sync.RWMutex
+	store    *store.Store
+	producer *events.Producer
 }
 
-func NewHub(st *store.Store) *Hub {
+func NewHub(st *store.Store, producer *events.Producer) *Hub {
 	return &Hub{
-		rooms: make(map[string]*Room),
-		store: st,
+		rooms:    make(map[string]*Room),
+		store:    st,
+		producer: producer,
 	}
+}
+
+func (h *Hub) publish(ctx context.Context, userID uuid.UUID, roomID uuid.UUID, evType string, payload any) {
+	if h.producer == nil {
+		return
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	h.producer.Publish(ctx, &events.GameEvent{
+		EventID:    uuid.New().String(),
+		RoomID:     roomID.String(),
+		EventType:  evType,
+		UserID:     userID.String(),
+		Payload:    data,
+		OccurredAt: time.Now(),
+	})
 }
 
 func (h *Hub) getOrCreateRoom(code string) *Room {
@@ -189,7 +210,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 
 	switch msg.Type {
 	case EvDiceRoll:
-		h.handleDiceRoll(c, msg.Payload)
+		h.handleDiceRoll(ctx, c, roomID, msg.Payload)
 
 	case EvTokenCreate:
 		if c.role != "dm" {
@@ -205,6 +226,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			return
 		}
 		h.broadcastToRoom(c.room, EvTokenCreate, token)
+		h.publish(ctx, c.userID, roomID, EvTokenCreate, token)
 
 	case EvTokenMove:
 		var p struct {
@@ -227,6 +249,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			return
 		}
 		h.broadcastToRoom(c.room, EvTokenMove, token)
+		h.publish(ctx, c.userID, roomID, EvTokenMove, token)
 
 	case EvTokenDelete:
 		if c.role != "dm" {
@@ -242,7 +265,9 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			log.Printf("hub: delete token: %v", err)
 			return
 		}
-		h.broadcastToRoom(c.room, EvTokenDelete, map[string]string{"id": p.ID.String()})
+		payload := map[string]string{"id": p.ID.String()}
+		h.broadcastToRoom(c.room, EvTokenDelete, payload)
+		h.publish(ctx, c.userID, roomID, EvTokenDelete, payload)
 
 	case EvGridUpdate:
 		if c.role != "dm" {
@@ -296,6 +321,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			return
 		}
 		h.broadcastToRoom(c.room, EvInitUpdate, msg.Payload)
+		h.publish(ctx, c.userID, roomID, EvInitUpdate, msg.Payload)
 
 	case EvInitNext, EvInitEnd:
 		if c.role != "dm" {
@@ -311,6 +337,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			return
 		}
 		h.broadcastToRoom(c.room, EvMapUpdate, msg.Payload)
+		h.publish(ctx, c.userID, roomID, EvMapUpdate, msg.Payload)
 	}
 }
 
@@ -318,7 +345,7 @@ type diceRollPayload struct {
 	Notation string `json:"notation"`
 }
 
-func (h *Hub) handleDiceRoll(c *Client, payload json.RawMessage) {
+func (h *Hub) handleDiceRoll(ctx context.Context, c *Client, roomID uuid.UUID, payload json.RawMessage) {
 	var p diceRollPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return
@@ -331,6 +358,7 @@ func (h *Hub) handleDiceRoll(c *Client, payload json.RawMessage) {
 		"total":    total,
 	}
 	h.broadcastToRoom(c.room, EvDiceRollResult, result)
+	h.publish(ctx, c.userID, roomID, EvDiceRollResult, result)
 }
 
 func (h *Hub) broadcastToRoom(r *Room, evType string, payload any) {

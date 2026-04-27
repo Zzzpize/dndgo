@@ -18,6 +18,7 @@ import (
 	"github.com/zzzpize/dndgo/backend/internal/auth"
 	"github.com/zzzpize/dndgo/backend/internal/bestiary"
 	"github.com/zzzpize/dndgo/backend/internal/character"
+	"github.com/zzzpize/dndgo/backend/internal/events"
 	"github.com/zzzpize/dndgo/backend/internal/game"
 	"github.com/zzzpize/dndgo/backend/internal/hub"
 	"github.com/zzzpize/dndgo/backend/internal/store"
@@ -39,6 +40,11 @@ func main() {
 		log.Fatal("JWT_SECRET is required")
 	}
 
+	kafkaBrokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+	if len(kafkaBrokers) == 0 || kafkaBrokers[0] == "" {
+		kafkaBrokers = []string{"kafka:9092"}
+	}
+
 	runMigrations(dbURL)
 
 	pool := connectDB(dbURL)
@@ -52,11 +58,20 @@ func main() {
 	}
 
 	st := store.New(pool)
+
+	producer := events.NewProducer(kafkaBrokers)
+	defer producer.Close()
+
+	consumer := events.NewConsumer(kafkaBrokers, st)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+
 	authHandler := auth.NewHandler(st, jwtSecret)
 	gameHandler := game.NewHandler(st)
 	charHandler := character.NewHandler(st)
 	bestiaryHandler := bestiary.NewHandler(st)
-	wsHub := hub.NewHub(st)
+	wsHub := hub.NewHub(st, producer)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -87,6 +102,7 @@ func main() {
 			r.Delete("/{code}", gameHandler.DeleteRoom)
 			r.Post("/{code}/characters", charHandler.Create)
 			r.Get("/{code}/characters", charHandler.ListByRoom)
+			r.Get("/{code}/events", gameHandler.ListEvents)
 		})
 
 		r.Route("/characters", func(r chi.Router) {
