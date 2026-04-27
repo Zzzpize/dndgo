@@ -19,6 +19,7 @@ import (
 	"github.com/zzzpize/dndgo/backend/internal/bestiary"
 	"github.com/zzzpize/dndgo/backend/internal/character"
 	"github.com/zzzpize/dndgo/backend/internal/game"
+	"github.com/zzzpize/dndgo/backend/internal/hub"
 	"github.com/zzzpize/dndgo/backend/internal/store"
 )
 
@@ -55,6 +56,7 @@ func main() {
 	gameHandler := game.NewHandler(st)
 	charHandler := character.NewHandler(st)
 	bestiaryHandler := bestiary.NewHandler(st)
+	wsHub := hub.NewHub(st)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -100,6 +102,8 @@ func main() {
 			r.Get("/", bestiaryHandler.List)
 			r.Get("/{id}", bestiaryHandler.Get)
 		})
+
+		r.Get("/ws/{code}", wsHub.ServeWS(jwtSecret))
 	})
 
 	log.Printf("server starting on :%s", port)
