@@ -16,7 +16,8 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
     if (password.length < 6) { setError('Пароль не менее 6 символов'); return }
     setLoading(true)
     setError('')
@@ -37,7 +38,7 @@ export default function RegisterPage() {
         <h1 className="heading-fantasy text-3xl mb-2 text-center">Регистрация</h1>
         <hr className="divider-gold mb-6" />
 
-        <form action={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
             label="Email"
             type="email"

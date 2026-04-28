@@ -15,7 +15,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
     setLoading(true)
     setError('')
     try {
@@ -35,7 +36,7 @@ export default function LoginPage() {
         <h1 className="heading-fantasy text-3xl mb-2 text-center">Вход</h1>
         <hr className="divider-gold mb-6" />
 
-        <form action={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
             label="Email"
             type="email"

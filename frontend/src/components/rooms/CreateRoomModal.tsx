@@ -37,7 +37,7 @@ export function CreateRoomModal({ open, onClose, onCreated }: CreateRoomModalPro
 
   return (
     <Modal open={open} onClose={onClose} title="Создать комнату">
-      <form action={handleSubmit} className="flex flex-col gap-4">
+      <form onSubmit={async (e) => { e.preventDefault(); await handleSubmit() }} className="flex flex-col gap-4">
         <Input
           label="Название"
           value={name}

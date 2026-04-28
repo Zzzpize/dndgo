@@ -29,12 +29,12 @@ type MapToken struct {
 }
 
 type TokenInput struct {
-	TokenType   string
-	CharacterID *uuid.UUID
-	Name        string
-	RelX        float64
-	RelY        float64
-	Disposition string
+	TokenType   string     `json:"token_type"`
+	CharacterID *uuid.UUID `json:"character_id,omitempty"`
+	Name        string     `json:"name"`
+	RelX        float64    `json:"rel_x"`
+	RelY        float64    `json:"rel_y"`
+	Disposition string     `json:"disposition"`
 }
 
 func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, error) {
