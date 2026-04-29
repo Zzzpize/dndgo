@@ -373,6 +373,15 @@ func (h *Hub) broadcastToRoom(r *Room, evType string, payload any) {
 	r.broadcast <- msg
 }
 
+func (h *Hub) BroadcastToRoomByCode(code string, evType string, payload any) {
+	h.mu.RLock()
+	r, ok := h.rooms[code]
+	h.mu.RUnlock()
+	if ok {
+		h.broadcastToRoom(r, evType, payload)
+	}
+}
+
 func (h *Hub) SendFullState(ctx context.Context, c *Client, roomID uuid.UUID) {
 	gs, err := h.store.GetGameState(ctx, roomID)
 	if err != nil {

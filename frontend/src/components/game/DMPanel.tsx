@@ -52,7 +52,7 @@ export function DMPanel({ sendMessage, roomCode }: Props) {
         {tab === 'tokens' && <TokensTab sendMessage={sendMessage} />}
         {tab === 'bestiary' && <BestiaryTab sendMessage={sendMessage} />}
         {tab === 'initiative' && <InitiativeTab sendMessage={sendMessage} />}
-        {tab === 'map' && <MapTab sendMessage={sendMessage} />}
+        {tab === 'map' && <MapTab sendMessage={sendMessage} roomCode={roomCode} />}
       </div>
     </div>
   )
@@ -406,14 +406,31 @@ function InitiativeTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
 }
 
 
-function MapTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
+function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; roomCode: string }) {
   const gameState = useGameStore((s) => s.gameState)
-  const [mapUrl, setMapUrl] = useState(gameState?.map_image_url ?? '')
   const [gridEnabled, setGridEnabled] = useState(gameState?.grid_enabled ?? true)
   const [gridSize, setGridSize] = useState(gameState?.grid_size ?? 50)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const applyMap = () => {
-    sendMessage('MAP_UPDATE', { map_image_url: mapUrl.trim() })
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError('')
+    try {
+      const form = new FormData()
+      form.append('map', file)
+      await api.post(`/api/v1/rooms/${roomCode}/map`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    } catch {
+      setUploadError('Ошибка загрузки')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const applyGrid = () => {
@@ -423,19 +440,31 @@ function MapTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
   return (
     <div className="p-3 flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-fantasy text-parchment/50">Карта (URL изображения)</p>
-        <input
-          value={mapUrl}
-          onChange={(e) => setMapUrl(e.target.value)}
-          placeholder="https://..."
-          className="w-full bg-dark border border-dark-border rounded px-2 py-1.5 text-xs text-parchment placeholder-parchment/30"
-        />
-        <button
-          onClick={applyMap}
-          className="w-full py-1.5 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light font-fantasy transition-colors"
+        <p className="text-xs font-fantasy text-parchment/50">Загрузить карту</p>
+        <label
+          className={`flex items-center justify-center gap-2 w-full py-2 border border-dashed rounded cursor-pointer transition-colors ${
+            uploading
+              ? 'border-gold/30 text-gold/50'
+              : 'border-dark-border hover:border-gold/40 text-parchment/50 hover:text-parchment/80'
+          }`}
         >
-          Применить карту
-        </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp"
+            className="sr-only"
+            onChange={handleFileChange}
+            disabled={uploading}
+          />
+          {uploading ? (
+            <span className="text-xs animate-pulse">Загрузка...</span>
+          ) : (
+            <span className="text-xs">Выбрать файл (jpg, png, webp)</span>
+          )}
+        </label>
+        {uploadError && (
+          <p className="text-ember text-xs">{uploadError}</p>
+        )}
       </div>
 
       <hr className="border-dark-border" />

@@ -72,6 +72,18 @@ func (s *Store) UpsertGameState(ctx context.Context, gs GameState) error {
 	return err
 }
 
+func (s *Store) UpdateMapImageURL(ctx context.Context, roomID uuid.UUID, url string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO game_state (room_id, map_image_url, grid_enabled, grid_size, fog_cells, initiative_order, updated_at)
+		VALUES ($1, $2, true, 50, '[]'::jsonb, '[]'::jsonb, NOW())
+		ON CONFLICT (room_id) DO UPDATE SET
+			map_image_url = EXCLUDED.map_image_url,
+			updated_at    = NOW()`,
+		roomID, url,
+	)
+	return err
+}
+
 func (s *Store) GetTokensByRoom(ctx context.Context, roomID uuid.UUID) ([]MapToken, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, room_id, token_type, character_id, name, rel_x, rel_y, disposition

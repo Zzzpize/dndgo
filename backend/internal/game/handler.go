@@ -18,12 +18,19 @@ import (
 
 const codeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-type Handler struct {
-	store *store.Store
+type Broadcaster interface {
+	BroadcastToRoomByCode(code string, evType string, payload any)
 }
 
-func NewHandler(st *store.Store) *Handler {
-	return &Handler{store: st}
+type Handler struct {
+	store       *store.Store
+	broadcaster Broadcaster
+	staticDir   string
+	publicURL   string
+}
+
+func NewHandler(st *store.Store, b Broadcaster, staticDir, publicURL string) *Handler {
+	return &Handler{store: st, broadcaster: b, staticDir: staticDir, publicURL: publicURL}
 }
 
 type createRoomRequest struct {
