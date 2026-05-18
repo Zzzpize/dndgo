@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/zzzpize/dndgo/backend/internal/events"
 	"github.com/zzzpize/dndgo/backend/internal/store"
 )
 
@@ -63,36 +62,26 @@ type Room struct {
 }
 
 type Hub struct {
-	rooms    map[string]*Room
-	mu       sync.RWMutex
-	store    *store.Store
-	producer *events.Producer
+	rooms map[string]*Room
+	mu    sync.RWMutex
+	store *store.Store
 }
 
-func NewHub(st *store.Store, producer *events.Producer) *Hub {
+func NewHub(st *store.Store) *Hub {
 	return &Hub{
-		rooms:    make(map[string]*Room),
-		store:    st,
-		producer: producer,
+		rooms: make(map[string]*Room),
+		store: st,
 	}
 }
 
-func (h *Hub) publish(ctx context.Context, userID uuid.UUID, roomID uuid.UUID, evType string, payload any) {
-	if h.producer == nil {
-		return
-	}
+func (h *Hub) publish(ctx context.Context, _ uuid.UUID, roomID uuid.UUID, evType string, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
-	h.producer.Publish(ctx, &events.GameEvent{
-		EventID:    uuid.New().String(),
-		RoomID:     roomID.String(),
-		EventType:  evType,
-		UserID:     userID.String(),
-		Payload:    data,
-		OccurredAt: time.Now(),
-	})
+	if err := h.store.InsertGameEvent(ctx, roomID, evType, json.RawMessage(data), time.Now()); err != nil {
+		log.Printf("hub: insert event: %v", err)
+	}
 }
 
 func (h *Hub) getOrCreateRoom(code string) *Room {

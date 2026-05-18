@@ -22,7 +22,6 @@ import (
 	"github.com/zzzpize/dndgo/backend/internal/auth"
 	"github.com/zzzpize/dndgo/backend/internal/bestiary"
 	"github.com/zzzpize/dndgo/backend/internal/character"
-	"github.com/zzzpize/dndgo/backend/internal/events"
 	"github.com/zzzpize/dndgo/backend/internal/game"
 	"github.com/zzzpize/dndgo/backend/internal/hub"
 	appmw "github.com/zzzpize/dndgo/backend/internal/middleware"
@@ -55,11 +54,6 @@ func main() {
 		publicURL = "http://localhost:" + port
 	}
 
-	kafkaBrokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	if len(kafkaBrokers) == 0 || kafkaBrokers[0] == "" {
-		kafkaBrokers = []string{"kafka:9092"}
-	}
-
 	if err := os.MkdirAll(staticDir+"/maps", 0o755); err != nil {
 		log.Fatalf("create static dir: %v", err)
 	}
@@ -78,15 +72,7 @@ func main() {
 
 	st := store.New(pool)
 
-	producer := events.NewProducer(kafkaBrokers)
-	defer producer.Close()
-
-	consumer := events.NewConsumer(kafkaBrokers, st)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go consumer.Run(ctx)
-
-	wsHub := hub.NewHub(st, producer)
+	wsHub := hub.NewHub(st)
 
 	authHandler := auth.NewHandler(st, jwtSecret)
 	gameHandler := game.NewHandler(st, wsHub, staticDir, publicURL)
