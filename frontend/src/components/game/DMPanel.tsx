@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useGameStore, InitiativeEntry } from '@/store/gameStore'
+import { useGameStore, InitiativeEntry, Character, NPC } from '@/store/gameStore'
+import { CharacterModal } from '@/components/character/CharacterModal'
+import { NpcModal } from '@/components/game/NpcModal'
 import api from '@/lib/api'
 
 interface Props {
@@ -9,7 +11,7 @@ interface Props {
   roomCode: string
 }
 
-type Tab = 'tokens' | 'bestiary' | 'initiative' | 'map'
+type Tab = 'tokens' | 'npc' | 'initiative' | 'map' | 'chars'
 
 interface Monster {
   id: number
@@ -25,9 +27,10 @@ export function DMPanel({ sendMessage, roomCode }: Props) {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'tokens', label: 'Токены' },
-    { key: 'bestiary', label: 'Бестиарий' },
-    { key: 'initiative', label: 'Инициатива' },
+    { key: 'npc', label: 'НПС' },
+    { key: 'initiative', label: 'Бой' },
     { key: 'map', label: 'Карта' },
+    { key: 'chars', label: 'Персонажи' },
   ]
 
   return (
@@ -50,9 +53,10 @@ export function DMPanel({ sendMessage, roomCode }: Props) {
 
       <div className="flex-1 overflow-y-auto">
         {tab === 'tokens' && <TokensTab sendMessage={sendMessage} />}
-        {tab === 'bestiary' && <BestiaryTab sendMessage={sendMessage} />}
+        {tab === 'npc' && <NpcTab sendMessage={sendMessage} roomCode={roomCode} />}
         {tab === 'initiative' && <InitiativeTab sendMessage={sendMessage} />}
         {tab === 'map' && <MapTab sendMessage={sendMessage} roomCode={roomCode} />}
+        {tab === 'chars' && <CharsTab roomCode={roomCode} />}
       </div>
     </div>
   )
@@ -68,12 +72,23 @@ function TokensTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
   const [disposition, setDisposition] = useState<'friendly' | 'neutral' | 'hostile'>('hostile')
   const [charId, setCharId] = useState('')
 
+  const handleCharSelect = (id: string) => {
+    setCharId(id)
+    if (id) {
+      const char = characters.find((c) => c.id === id)
+      if (char) setName(char.name)
+    } else {
+      setName('')
+    }
+  }
+
   const handleAdd = () => {
-    if (!name.trim()) return
+    const effectiveName = name.trim() || (charId ? (characters.find((c) => c.id === charId)?.name ?? '') : '')
+    if (!effectiveName) return
     sendMessage('TOKEN_CREATE', {
       token_type: tokenType,
       character_id: charId || undefined,
-      name: name.trim(),
+      name: effectiveName,
       rel_x: 0.5,
       rel_y: 0.5,
       disposition,
@@ -89,7 +104,7 @@ function TokensTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
 
   const DISP_COLOR: Record<string, string> = {
     friendly: 'text-gold',
-    neutral: 'text-steel-light',
+    neutral: 'text-[#c9b42e]',
     hostile: 'text-ember',
   }
   const DISP_LABEL: Record<string, string> = {
@@ -112,17 +127,10 @@ function TokensTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
 
       {showForm && (
         <div className="bg-dark border border-dark-border rounded p-3 flex flex-col gap-2">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Имя токена"
-            className="w-full bg-dark-card border border-dark-border rounded px-2 py-1.5 text-xs text-parchment placeholder-parchment/30"
-            autoFocus
-          />
           <div className="flex gap-2">
             <select
               value={tokenType}
-              onChange={(e) => setTokenType(e.target.value as 'pc' | 'npc')}
+              onChange={(e) => { setTokenType(e.target.value as 'pc' | 'npc'); setCharId(''); setName('') }}
               className="flex-1 bg-dark-card border border-dark-border rounded px-2 py-1.5 text-xs text-parchment"
             >
               <option value="npc">НПС</option>
@@ -138,19 +146,28 @@ function TokensTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
               <option value="hostile">Враг</option>
             </select>
           </div>
-          {tokenType === 'pc' && characters.length > 0 && (
+          {tokenType === 'pc' && characters.length > 0 ? (
             <select
               value={charId}
-              onChange={(e) => setCharId(e.target.value)}
+              onChange={(e) => handleCharSelect(e.target.value)}
               className="w-full bg-dark-card border border-dark-border rounded px-2 py-1.5 text-xs text-parchment"
+              autoFocus
             >
-              <option value="">— Без привязки —</option>
+              <option value="">— Выбрать персонажа —</option>
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </select>
+          ) : (
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={tokenType === 'pc' ? 'Имя (персонажей нет)' : 'Имя НПС'}
+              className="w-full bg-dark-card border border-dark-border rounded px-2 py-1.5 text-xs text-parchment placeholder-parchment/30"
+              autoFocus
+            />
           )}
           <div className="flex gap-2">
             <button
@@ -195,7 +212,12 @@ function TokensTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
 }
 
 
-function BestiaryTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
+function NpcTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; roomCode: string }) {
+  const npcs = useGameStore((s) => s.npcs)
+  const removeNpc = useGameStore((s) => s.removeNpc)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editNpc, setEditNpc] = useState<NPC | null>(null)
+
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Monster[]>([])
   const [loading, setLoading] = useState(false)
@@ -203,10 +225,7 @@ function BestiaryTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
-    if (!query.trim()) {
-      setResults([])
-      return
-    }
+    if (!query.trim()) { setResults([]); return }
     setLoading(true)
     debounceRef.current = setTimeout(() => {
       api
@@ -218,54 +237,120 @@ function BestiaryTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
     return () => clearTimeout(debounceRef.current)
   }, [query])
 
+  const placeNpc = (n: NPC) => {
+    sendMessage('TOKEN_CREATE', {
+      token_type: 'npc',
+      npc_id: n.id,
+      name: n.name,
+      rel_x: 0.5,
+      rel_y: 0.5,
+      disposition: n.disposition,
+      max_hp: n.max_hp,
+      current_hp: n.max_hp,
+    })
+  }
+
   const placeMonster = (m: Monster) => {
+    const maxHp = parseInt(m.hit_points) || 1
     sendMessage('TOKEN_CREATE', {
       token_type: 'npc',
       name: m.name_ru,
       rel_x: 0.5,
       rel_y: 0.5,
       disposition: 'hostile',
+      max_hp: maxHp,
+      current_hp: maxHp,
     })
+  }
+
+  const handleDelete = async (n: NPC) => {
+    await api.delete(`/api/v1/npcs/${n.id}`)
+    removeNpc(n.id)
+  }
+
+  const openCreate = () => { setEditNpc(null); setModalOpen(true) }
+  const openEdit = (n: NPC) => { setEditNpc(n); setModalOpen(true) }
+
+  const DISP_COLOR: Record<string, string> = {
+    friendly: 'text-gold',
+    neutral: 'text-[#c9b42e]',
+    hostile: 'text-ember',
   }
 
   return (
     <div className="p-3 flex flex-col gap-3">
+      {/* Свои НПС */}
+      <div className="flex items-center justify-between">
+        <span className="text-parchment/50 text-xs font-fantasy">Свои НПС ({npcs.length})</span>
+        <button
+          onClick={openCreate}
+          className="text-xs px-2 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-gold-light font-fantasy transition-colors"
+        >
+          + Создать
+        </button>
+      </div>
+
+      {npcs.length === 0 && (
+        <p className="text-parchment/30 text-xs text-center py-2">Создайте НПС чтобы разместить на карте</p>
+      )}
+
+      <div className="flex flex-col gap-1">
+        {npcs.map((n) => (
+          <div key={n.id} className="flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border group">
+            <span className={`text-xs shrink-0 ${DISP_COLOR[n.disposition]}`}>●</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-parchment truncate">{n.name}</p>
+              <p className="text-parchment/30 text-xs">КД {n.ac} · {n.max_hp} хп</p>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <button onClick={() => openEdit(n)} className="text-parchment/40 hover:text-gold-light text-sm w-5 h-5 flex items-center justify-center" title="Редактировать">✎</button>
+              <button
+                onClick={() => placeNpc(n)}
+                className="text-xs px-1.5 py-0.5 bg-ember/20 hover:bg-ember/30 border border-ember/30 rounded text-ember transition-colors"
+              >+ карта</button>
+              <button onClick={() => handleDelete(n)} className="text-ember/40 hover:text-ember text-xs w-5 h-5 flex items-center justify-center">✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <hr className="border-dark-border" />
+
+      {/* Бестиарий */}
+      <span className="text-parchment/50 text-xs font-fantasy">Бестиарий</span>
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Поиск монстра..."
         className="w-full bg-dark border border-dark-border rounded px-2 py-1.5 text-xs text-parchment placeholder-parchment/30"
-        autoFocus
       />
-
-      {loading && (
-        <p className="text-parchment/30 text-xs text-center animate-pulse">Поиск...</p>
-      )}
-
+      {loading && <p className="text-parchment/30 text-xs text-center animate-pulse">Поиск...</p>}
       <div className="flex flex-col gap-1">
         {results.map((m) => (
-          <div
-            key={m.id}
-            className="flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border group"
-          >
+          <div key={m.id} className="flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border group">
             <div className="flex-1 min-w-0">
               <p className="text-xs text-parchment truncate">{m.name_ru}</p>
-              <p className="text-parchment/30 text-xs truncate">
-                КД {m.armor_class} · {m.hit_points} хп
-              </p>
+              <p className="text-parchment/30 text-xs truncate">КД {m.armor_class} · {m.hit_points} хп</p>
             </div>
             <button
               onClick={() => placeMonster(m)}
               className="text-xs px-2 py-0.5 bg-ember/20 hover:bg-ember/30 border border-ember/30 rounded text-ember opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-            >
-              + карта
-            </button>
+            >+ карта</button>
           </div>
         ))}
         {!loading && query && results.length === 0 && (
           <p className="text-parchment/30 text-xs text-center py-4">Не найдено</p>
         )}
       </div>
+
+      {modalOpen && (
+        <NpcModal
+          roomCode={roomCode}
+          npc={editNpc ?? undefined}
+          onClose={() => setModalOpen(false)}
+          onSaved={() => setModalOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -405,6 +490,66 @@ function InitiativeTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
   )
 }
 
+
+function CharsTab({ roomCode }: { roomCode: string }) {
+  const characters = useGameStore((s) => s.characters)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editChar, setEditChar] = useState<Character | null>(null)
+
+  const openCreate = () => { setEditChar(null); setModalOpen(true) }
+  const openEdit = (c: Character) => { setEditChar(c); setModalOpen(true) }
+
+  return (
+    <div className="p-3 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-parchment/50 text-xs font-fantasy">
+          Персонажи ({characters.length})
+        </span>
+        <button
+          onClick={openCreate}
+          className="text-xs px-2 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-gold-light font-fantasy transition-colors"
+        >
+          + Создать
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        {characters.length === 0 && (
+          <p className="text-parchment/30 text-xs text-center py-4">Персонажей нет</p>
+        )}
+        {characters.map((c) => (
+          <div
+            key={c.id}
+            className="flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-parchment truncate">{c.name}</p>
+              <p className="text-parchment/30 text-xs truncate">
+                {[c.class, c.race, c.level ? `${c.level} ур.` : ''].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <button
+              onClick={() => openEdit(c)}
+              className="text-parchment/40 hover:text-gold-light text-sm w-6 h-6 flex items-center justify-center transition-colors shrink-0"
+              title="Редактировать"
+            >
+              ✎
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {modalOpen && (
+        <CharacterModal
+          roomCode={roomCode}
+          character={editChar ?? undefined}
+          onClose={() => setModalOpen(false)}
+          onSaved={() => setModalOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
 
 function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; roomCode: string }) {
   const gameState = useGameStore((s) => s.gameState)

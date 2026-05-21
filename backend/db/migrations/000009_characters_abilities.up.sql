@@ -1,0 +1,2 @@
+ALTER TABLE characters
+  ADD COLUMN abilities JSONB NOT NULL DEFAULT '[]';

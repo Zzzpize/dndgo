@@ -25,6 +25,7 @@ import (
 	"github.com/zzzpize/dndgo/backend/internal/game"
 	"github.com/zzzpize/dndgo/backend/internal/hub"
 	appmw "github.com/zzzpize/dndgo/backend/internal/middleware"
+	"github.com/zzzpize/dndgo/backend/internal/npc"
 	"github.com/zzzpize/dndgo/backend/internal/store"
 )
 
@@ -77,6 +78,7 @@ func main() {
 	authHandler := auth.NewHandler(st, jwtSecret)
 	gameHandler := game.NewHandler(st, wsHub, staticDir, publicURL)
 	charHandler := character.NewHandler(st)
+	npcHandler := npc.NewHandler(st)
 	bestiaryHandler := bestiary.NewHandler(st)
 
 	r := chi.NewRouter()
@@ -121,7 +123,15 @@ func main() {
 			r.Post("/{code}/map", gameHandler.UploadMap)
 			r.Post("/{code}/characters", charHandler.Create)
 			r.Get("/{code}/characters", charHandler.ListByRoom)
+			r.Post("/{code}/npcs", npcHandler.Create)
+			r.Get("/{code}/npcs", npcHandler.ListByRoom)
 			r.Get("/{code}/events", gameHandler.ListEvents)
+		})
+
+		r.Route("/npcs", func(r chi.Router) {
+			r.Use(auth.JWT(jwtSecret))
+			r.Put("/{id}", npcHandler.Update)
+			r.Delete("/{id}", npcHandler.Delete)
 		})
 
 		r.Route("/characters", func(r chi.Router) {

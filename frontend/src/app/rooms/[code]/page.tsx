@@ -8,9 +8,41 @@ import { useGameStore } from '@/store/gameStore'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { Button } from '@/components/ui/Button'
 import { CharacterSheet } from '@/components/character/CharacterSheet'
+import { CharacterModal } from '@/components/character/CharacterModal'
+import { NpcSheet } from '@/components/game/NpcSheet'
 import { DMPanel } from '@/components/game/DMPanel'
 import { DiceRoller } from '@/components/dice/DiceRoller'
 import api from '@/lib/api'
+
+type Tool = 'pointer' | 'fog' | 'ruler'
+const TOOLS: { key: Tool; icon: string; title: string }[] = [
+  { key: 'pointer', icon: '✥', title: 'Указатель' },
+  { key: 'ruler',  icon: '📏', title: 'Линейка' },
+  { key: 'fog',    icon: '☁',  title: 'Туман войны' },
+]
+
+function ToolBar() {
+  const activeTool = useGameStore((s) => s.activeTool)
+  const setActiveTool = useGameStore((s) => s.setActiveTool)
+  return (
+    <div className="absolute top-3 left-3 flex flex-col gap-1 z-20">
+      {TOOLS.map(({ key, icon, title }) => (
+        <button
+          key={key}
+          title={title}
+          onClick={() => setActiveTool(key)}
+          className={`w-9 h-9 flex items-center justify-center rounded border text-base transition-colors ${
+            activeTool === key
+              ? 'bg-gold/30 border-gold text-gold-light'
+              : 'bg-dark-card/80 border-dark-border text-parchment/50 hover:text-parchment/80 hover:border-dark-border/80'
+          }`}
+        >
+          {icon}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 const GameCanvas = dynamic(() => import('@/components/game/GameCanvas'), {
   ssr: false,
@@ -40,15 +72,29 @@ export default function RoomPage() {
   const selectedCharId = useGameStore((s) => s.selectedCharId)
   const setRole = useGameStore((s) => s.setRole)
   const setCharacters = useGameStore((s) => s.setCharacters)
+  const setNpcs = useGameStore((s) => s.setNpcs)
   const setSelectedChar = useGameStore((s) => s.setSelectedChar)
+  const setSelectedToken = useGameStore((s) => s.setSelectedToken)
   const reset = useGameStore((s) => s.reset)
+  const selectedTokenId = useGameStore((s) => s.selectedTokenId)
   const selectedChar = useGameStore((s) =>
     s.characters.find((c) => c.id === s.selectedCharId) ?? null
   )
+  const selectedToken = useGameStore((s) =>
+    s.tokens.find((t) => t.id === s.selectedTokenId) ?? null
+  )
+  const selectedNpc = useGameStore((s) => {
+    const token = s.tokens.find((t) => t.id === s.selectedTokenId)
+    if (!token?.npc_id) return null
+    return s.npcs.find((n) => n.id === token.npc_id) ?? null
+  })
+
+  const myChar = useGameStore((s) => s.characters.find((c) => c.user_id === user?.id) ?? null)
 
   const [room, setRoom] = useState<RoomInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [showDMPanel, setShowDMPanel] = useState(true)
+  const [charModalOpen, setCharModalOpen] = useState(false)
 
   const { sendMessage } = useWebSocket(code)
 
@@ -66,17 +112,19 @@ export default function RoomPage() {
     Promise.all([
       api.get<RoomInfo>(`/api/v1/rooms/${code}`),
       api.get(`/api/v1/rooms/${code}/characters`),
+      api.get(`/api/v1/rooms/${code}/npcs`),
     ])
-      .then(([roomRes, charsRes]) => {
+      .then(([roomRes, charsRes, npcsRes]) => {
         setRoom(roomRes.data)
         setRole(roomRes.data.role as 'dm' | 'player')
         setCharacters(charsRes.data)
+        setNpcs(npcsRes.data)
       })
       .catch(() => {
         router.replace('/rooms')
       })
       .finally(() => setLoading(false))
-  }, [hydrated, user, code, router, setRole, setCharacters])
+  }, [hydrated, user, code, router, setRole, setCharacters, setNpcs])
 
   useEffect(() => {
     return () => {
@@ -138,6 +186,15 @@ export default function RoomPage() {
               {showDMPanel ? 'Скрыть панель' : 'Панель ДМ'}
             </Button>
           )}
+          {role === 'player' && (
+            <Button
+              variant="ghost"
+              className="text-xs"
+              onClick={() => setCharModalOpen(true)}
+            >
+              {myChar ? 'Персонаж' : '+ Персонаж'}
+            </Button>
+          )}
         </div>
       </header>
 
@@ -146,6 +203,7 @@ export default function RoomPage() {
           <div className="flex-1 relative overflow-hidden">
             <GameCanvas sendMessage={sendMessage} />
             <DiceLogOverlay />
+            {role === 'dm' && <ToolBar />}
           </div>
           <DiceRoller sendMessage={sendMessage} />
         </div>
@@ -159,18 +217,44 @@ export default function RoomPage() {
             <div className="px-3 py-2 flex items-center justify-between border-b border-dark-border shrink-0">
               <span className="text-xs font-fantasy text-gold-light">Лист персонажа</span>
               <button
-                onClick={() => setSelectedChar(null)}
+                onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
                 className="text-parchment/40 hover:text-parchment/70 text-sm w-6 h-6 flex items-center justify-center"
               >
                 ✕
               </button>
             </div>
             <div className="overflow-y-auto flex-1">
-              <CharacterSheet character={selectedChar} />
+              <CharacterSheet character={selectedChar} sendMessage={sendMessage} />
+            </div>
+          </div>
+        )}
+
+        {selectedTokenId && selectedNpc && selectedToken && !selectedCharId && (
+          <div className="w-80 border-l border-dark-border bg-dark-card flex flex-col overflow-hidden">
+            <div className="px-3 py-2 flex items-center justify-between border-b border-dark-border shrink-0">
+              <span className="text-xs font-fantasy text-ember">НПС</span>
+              <button
+                onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
+                className="text-parchment/40 hover:text-parchment/70 text-sm w-6 h-6 flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              <NpcSheet npc={selectedNpc} token={selectedToken} sendMessage={sendMessage} />
             </div>
           </div>
         )}
       </div>
+
+      {charModalOpen && (
+        <CharacterModal
+          roomCode={code}
+          character={myChar ?? undefined}
+          onClose={() => setCharModalOpen(false)}
+          onSaved={() => setCharModalOpen(false)}
+        />
+      )}
     </div>
   )
 }

@@ -1,0 +1,5 @@
+ALTER TABLE characters
+  DROP COLUMN IF EXISTS subclass,
+  DROP COLUMN IF EXISTS subrace,
+  DROP COLUMN IF EXISTS temp_hp,
+  DROP COLUMN IF EXISTS inventory;

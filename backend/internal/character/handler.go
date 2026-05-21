@@ -26,14 +26,19 @@ func NewHandler(st *store.Store) *Handler {
 type characterRequest struct {
 	Name       string          `json:"name"`
 	Class      string          `json:"class"`
+	Subclass   string          `json:"subclass"`
 	Race       string          `json:"race"`
+	Subrace    string          `json:"subrace"`
 	Level      int             `json:"level"`
 	HP         int             `json:"hp"`
 	MaxHP      int             `json:"max_hp"`
 	AC         int             `json:"ac"`
+	TempHP     int             `json:"temp_hp"`
 	Stats      json.RawMessage `json:"stats"`
 	Weapons    json.RawMessage `json:"weapons"`
 	SpellSlots json.RawMessage `json:"spell_slots"`
+	Abilities  json.RawMessage `json:"abilities"`
+	Inventory  string          `json:"inventory"`
 	Notes      string          `json:"notes"`
 }
 
@@ -67,15 +72,20 @@ type characterResponse struct {
 	RoomID      string          `json:"room_id"`
 	Name        string          `json:"name"`
 	Class       string          `json:"class"`
+	Subclass    string          `json:"subclass"`
 	Race        string          `json:"race"`
+	Subrace     string          `json:"subrace"`
 	Level       int             `json:"level"`
 	HP          int             `json:"hp"`
 	MaxHP       int             `json:"max_hp"`
 	AC          int             `json:"ac"`
+	TempHP      int             `json:"temp_hp"`
 	EffectiveAC int             `json:"effective_ac"`
 	Stats       *statsEnriched  `json:"stats"`
 	Weapons     json.RawMessage `json:"weapons"`
 	SpellSlots  json.RawMessage `json:"spell_slots"`
+	Abilities   json.RawMessage `json:"abilities"`
+	Inventory   string          `json:"inventory"`
 	Notes       string          `json:"notes"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
@@ -107,15 +117,20 @@ func toResponse(c store.Character) characterResponse {
 		RoomID:      c.RoomID.String(),
 		Name:        c.Name,
 		Class:       c.Class,
+		Subclass:    c.Subclass,
 		Race:        c.Race,
+		Subrace:     c.Subrace,
 		Level:       c.Level,
 		HP:          c.HP,
 		MaxHP:       c.MaxHP,
 		AC:          c.AC,
+		TempHP:      c.TempHP,
 		EffectiveAC: effectiveAC,
 		Stats:       enriched,
 		Weapons:     c.Weapons,
 		SpellSlots:  c.SpellSlots,
+		Abilities:   c.Abilities,
+		Inventory:   c.Inventory,
 		Notes:       c.Notes,
 		CreatedAt:   c.CreatedAt,
 		UpdatedAt:   c.UpdatedAt,
@@ -161,9 +176,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := h.store.CreateCharacter(r.Context(), userID, room.ID, store.CharacterInput{
-		Name: req.Name, Class: req.Class, Race: req.Race,
-		Level: req.Level, HP: req.HP, MaxHP: req.MaxHP, AC: req.AC,
-		Stats: req.Stats, Weapons: req.Weapons, SpellSlots: req.SpellSlots, Notes: req.Notes,
+		Name: req.Name, Class: req.Class, Subclass: req.Subclass,
+		Race: req.Race, Subrace: req.Subrace,
+		Level: req.Level, HP: req.HP, MaxHP: req.MaxHP, AC: req.AC, TempHP: req.TempHP,
+		Stats: req.Stats, Weapons: req.Weapons, SpellSlots: req.SpellSlots,
+		Abilities: req.Abilities, Inventory: req.Inventory, Notes: req.Notes,
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
@@ -262,8 +279,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.UserID != userID {
-		httputil.Error(w, http.StatusForbidden, "only the owner can update this character", "ERR_FORBIDDEN")
-		return
+		role, roleErr := h.store.GetMemberRoleByRoomID(r.Context(), existing.RoomID, userID)
+		if roleErr != nil || role != "dm" {
+			httputil.Error(w, http.StatusForbidden, "only the owner or DM can update this character", "ERR_FORBIDDEN")
+			return
+		}
 	}
 
 	var req characterRequest
@@ -277,9 +297,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated, err := h.store.UpdateCharacter(r.Context(), id, store.CharacterInput{
-		Name: req.Name, Class: req.Class, Race: req.Race,
-		Level: req.Level, HP: req.HP, MaxHP: req.MaxHP, AC: req.AC,
-		Stats: req.Stats, Weapons: req.Weapons, SpellSlots: req.SpellSlots, Notes: req.Notes,
+		Name: req.Name, Class: req.Class, Subclass: req.Subclass,
+		Race: req.Race, Subrace: req.Subrace,
+		Level: req.Level, HP: req.HP, MaxHP: req.MaxHP, AC: req.AC, TempHP: req.TempHP,
+		Stats: req.Stats, Weapons: req.Weapons, SpellSlots: req.SpellSlots,
+		Abilities: req.Abilities, Inventory: req.Inventory, Notes: req.Notes,
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")

@@ -7,10 +7,27 @@ export interface MapToken {
   room_id: string
   token_type: 'pc' | 'npc'
   character_id?: string
+  npc_id?: string
   name: string
   rel_x: number
   rel_y: number
   disposition: 'friendly' | 'neutral' | 'hostile'
+  current_hp?: number
+  max_hp?: number
+}
+
+export interface NPC {
+  id: string
+  user_id: string
+  room_id: string
+  name: string
+  disposition: 'friendly' | 'neutral' | 'hostile'
+  ac: string
+  max_hp: number
+  speed: string
+  type_alignment: string
+  abilities: Record<string, number>
+  actions: string[]
 }
 
 export interface InitiativeEntry {
@@ -59,15 +76,20 @@ export interface Character {
   room_id: string
   name: string
   class: string
+  subclass: string
   race: string
+  subrace: string
   level: number
   hp: number
   max_hp: number
   ac: number
+  temp_hp: number
   effective_ac: number
   stats: CharacterStats | null
   weapons: unknown
   spell_slots: unknown
+  abilities: unknown
+  inventory: string
   notes: string
 }
 
@@ -75,6 +97,7 @@ interface GameStore {
   tokens: MapToken[]
   gameState: GameStateData | null
   characters: Character[]
+  npcs: NPC[]
   diceLogs: DiceLogEntry[]
   isConnected: boolean
   role: 'dm' | 'player' | null
@@ -82,11 +105,18 @@ interface GameStore {
   selectedTokenId: string | null
   selectedCharId: string | null
   rulerPos: { x1: number; y1: number; x2: number; y2: number } | null
+  activeTool: 'pointer' | 'fog' | 'ruler'
 
   setRole: (r: 'dm' | 'player') => void
   setConnected: (v: boolean) => void
+  setActiveTool: (t: 'pointer' | 'fog' | 'ruler') => void
   setCharacters: (chars: Character[]) => void
+  addCharacter: (char: Character) => void
   updateCharacter: (char: Character) => void
+  setNpcs: (npcs: NPC[]) => void
+  addNpc: (n: NPC) => void
+  updateNpc: (n: NPC) => void
+  removeNpc: (id: string) => void
   applyFullState: (gs: GameStateData, tokens: MapToken[]) => void
   addToken: (t: MapToken) => void
   updateToken: (t: MapToken) => void
@@ -108,6 +138,7 @@ const initialState = {
   tokens: [] as MapToken[],
   gameState: null,
   characters: [] as Character[],
+  npcs: [] as NPC[],
   diceLogs: [] as DiceLogEntry[],
   isConnected: false,
   role: null as 'dm' | 'player' | null,
@@ -115,6 +146,7 @@ const initialState = {
   selectedTokenId: null as string | null,
   selectedCharId: null as string | null,
   rulerPos: null as { x1: number; y1: number; x2: number; y2: number } | null,
+  activeTool: 'pointer' as 'pointer' | 'fog' | 'ruler',
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -122,9 +154,17 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setRole: (r) => set({ role: r }),
   setConnected: (v) => set({ isConnected: v }),
+  setActiveTool: (t) => set({ activeTool: t }),
   setCharacters: (chars) => set({ characters: chars }),
+  addCharacter: (char) => set((s) => ({ characters: [...s.characters, char] })),
+
   updateCharacter: (char) =>
     set((s) => ({ characters: s.characters.map((c) => (c.id === char.id ? char : c)) })),
+
+  setNpcs: (npcs) => set({ npcs }),
+  addNpc: (n) => set((s) => ({ npcs: [...s.npcs, n] })),
+  updateNpc: (n) => set((s) => ({ npcs: s.npcs.map((x) => (x.id === n.id ? n : x)) })),
+  removeNpc: (id) => set((s) => ({ npcs: s.npcs.filter((x) => x.id !== id) })),
 
   applyFullState: (gs, tokens) => {
     const parsed: GameStateData = {
@@ -135,7 +175,9 @@ export const useGameStore = create<GameStore>((set) => ({
     set({ gameState: parsed, tokens, activeInitIndex: 0 })
   },
 
-  addToken: (t) => set((s) => ({ tokens: [...s.tokens, t] })),
+  addToken: (t) => set((s) => ({
+    tokens: s.tokens.some((tok) => tok.id === t.id) ? s.tokens : [...s.tokens, t],
+  })),
   updateToken: (t) =>
     set((s) => ({ tokens: s.tokens.map((tok) => (tok.id === t.id ? t : tok)) })),
   removeToken: (id) => set((s) => ({ tokens: s.tokens.filter((t) => t.id !== id) })),
@@ -162,7 +204,11 @@ export const useGameStore = create<GameStore>((set) => ({
       return { activeInitIndex: len > 0 ? (s.activeInitIndex + 1) % len : 0 }
     }),
 
-  endInitiative: () => set({ activeInitIndex: 0 }),
+  endInitiative: () =>
+    set((s) => ({
+      activeInitIndex: 0,
+      gameState: s.gameState ? { ...s.gameState, initiative_order: [] } : s.gameState,
+    })),
 
   addDiceLog: (entry) =>
     set((s) => ({

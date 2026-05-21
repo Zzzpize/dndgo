@@ -22,19 +22,25 @@ type MapToken struct {
 	RoomID      uuid.UUID  `json:"room_id"`
 	TokenType   string     `json:"token_type"`
 	CharacterID *uuid.UUID `json:"character_id,omitempty"`
+	NpcID       *uuid.UUID `json:"npc_id,omitempty"`
 	Name        string     `json:"name"`
 	RelX        float64    `json:"rel_x"`
 	RelY        float64    `json:"rel_y"`
 	Disposition string     `json:"disposition"`
+	CurrentHP   *int       `json:"current_hp,omitempty"`
+	MaxHP       *int       `json:"max_hp,omitempty"`
 }
 
 type TokenInput struct {
 	TokenType   string     `json:"token_type"`
 	CharacterID *uuid.UUID `json:"character_id,omitempty"`
+	NpcID       *uuid.UUID `json:"npc_id,omitempty"`
 	Name        string     `json:"name"`
 	RelX        float64    `json:"rel_x"`
 	RelY        float64    `json:"rel_y"`
 	Disposition string     `json:"disposition"`
+	CurrentHP   *int       `json:"current_hp,omitempty"`
+	MaxHP       *int       `json:"max_hp,omitempty"`
 }
 
 func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, error) {
@@ -84,9 +90,18 @@ func (s *Store) UpdateMapImageURL(ctx context.Context, roomID uuid.UUID, url str
 	return err
 }
 
+const tokenCols = `id, room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp`
+
+func scanToken(row interface{ Scan(...any) error }) (MapToken, error) {
+	var t MapToken
+	err := row.Scan(&t.ID, &t.RoomID, &t.TokenType, &t.CharacterID, &t.NpcID,
+		&t.Name, &t.RelX, &t.RelY, &t.Disposition, &t.CurrentHP, &t.MaxHP)
+	return t, err
+}
+
 func (s *Store) GetTokensByRoom(ctx context.Context, roomID uuid.UUID) ([]MapToken, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, room_id, token_type, character_id, name, rel_x, rel_y, disposition
+		SELECT `+tokenCols+`
 		FROM map_tokens WHERE room_id = $1 ORDER BY created_at`, roomID)
 	if err != nil {
 		return nil, err
@@ -95,8 +110,8 @@ func (s *Store) GetTokensByRoom(ctx context.Context, roomID uuid.UUID) ([]MapTok
 
 	var tokens []MapToken
 	for rows.Next() {
-		var t MapToken
-		if err := rows.Scan(&t.ID, &t.RoomID, &t.TokenType, &t.CharacterID, &t.Name, &t.RelX, &t.RelY, &t.Disposition); err != nil {
+		t, err := scanToken(rows)
+		if err != nil {
 			return nil, err
 		}
 		tokens = append(tokens, t)
@@ -108,25 +123,34 @@ func (s *Store) GetTokensByRoom(ctx context.Context, roomID uuid.UUID) ([]MapTok
 }
 
 func (s *Store) CreateToken(ctx context.Context, roomID uuid.UUID, in TokenInput) (MapToken, error) {
-	var t MapToken
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO map_tokens (room_id, token_type, character_id, name, rel_x, rel_y, disposition)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, room_id, token_type, character_id, name, rel_x, rel_y, disposition`,
-		roomID, in.TokenType, in.CharacterID, in.Name, in.RelX, in.RelY, in.Disposition,
-	).Scan(&t.ID, &t.RoomID, &t.TokenType, &t.CharacterID, &t.Name, &t.RelX, &t.RelY, &t.Disposition)
-	return t, err
+	row := s.pool.QueryRow(ctx, `
+		INSERT INTO map_tokens (room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING `+tokenCols,
+		roomID, in.TokenType, in.CharacterID, in.NpcID, in.Name,
+		in.RelX, in.RelY, in.Disposition, in.CurrentHP, in.MaxHP,
+	)
+	return scanToken(row)
 }
 
 func (s *Store) UpdateTokenPosition(ctx context.Context, tokenID uuid.UUID, relX, relY float64) (MapToken, error) {
-	var t MapToken
-	err := s.pool.QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		UPDATE map_tokens SET rel_x = $2, rel_y = $3
 		WHERE id = $1
-		RETURNING id, room_id, token_type, character_id, name, rel_x, rel_y, disposition`,
+		RETURNING `+tokenCols,
 		tokenID, relX, relY,
-	).Scan(&t.ID, &t.RoomID, &t.TokenType, &t.CharacterID, &t.Name, &t.RelX, &t.RelY, &t.Disposition)
-	return t, err
+	)
+	return scanToken(row)
+}
+
+func (s *Store) UpdateTokenHP(ctx context.Context, tokenID uuid.UUID, currentHP *int) (MapToken, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE map_tokens SET current_hp = $2
+		WHERE id = $1
+		RETURNING `+tokenCols,
+		tokenID, currentHP,
+	)
+	return scanToken(row)
 }
 
 func (s *Store) DeleteToken(ctx context.Context, tokenID uuid.UUID) error {
@@ -135,10 +159,7 @@ func (s *Store) DeleteToken(ctx context.Context, tokenID uuid.UUID) error {
 }
 
 func (s *Store) GetTokenByID(ctx context.Context, tokenID uuid.UUID) (MapToken, error) {
-	var t MapToken
-	err := s.pool.QueryRow(ctx, `
-		SELECT id, room_id, token_type, character_id, name, rel_x, rel_y, disposition
-		FROM map_tokens WHERE id = $1`, tokenID,
-	).Scan(&t.ID, &t.RoomID, &t.TokenType, &t.CharacterID, &t.Name, &t.RelX, &t.RelY, &t.Disposition)
-	return t, err
+	row := s.pool.QueryRow(ctx, `
+		SELECT `+tokenCols+` FROM map_tokens WHERE id = $1`, tokenID)
+	return scanToken(row)
 }

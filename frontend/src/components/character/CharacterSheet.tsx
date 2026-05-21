@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Character, useGameStore } from '@/store/gameStore'
 import api from '@/lib/api'
 
 interface Props {
   character: Character
+  sendMessage?: (type: string, payload?: unknown) => void
 }
 
 type Tab = 'combat' | 'stats' | 'spells' | 'inventory'
@@ -19,11 +20,13 @@ const STAT_LABELS: Array<[keyof NonNullable<Character['stats']>, string, keyof N
   ['charisma', 'ХАР', 'cha_mod'],
 ]
 
-export function CharacterSheet({ character }: Props) {
+export function CharacterSheet({ character, sendMessage }: Props) {
   const [tab, setTab] = useState<Tab>('combat')
   const [hpDelta, setHpDelta] = useState('')
   const [saving, setSaving] = useState(false)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
+  // Reset tab when character changes
+  useEffect(() => { setTab('combat') }, [character.id])
 
   const applyHP = async (delta: number) => {
     if (saving) return
@@ -31,6 +34,7 @@ export function CharacterSheet({ character }: Props) {
     try {
       const { data } = await api.patch(`/api/v1/characters/${character.id}/hp`, { delta })
       updateCharacter(data)
+      sendMessage?.('CHARACTER_UPDATE', data)
     } finally {
       setSaving(false)
     }
@@ -55,7 +59,10 @@ export function CharacterSheet({ character }: Props) {
       <div className="px-3 py-3 border-b border-dark-border">
         <p className="font-fantasy text-gold-light text-base leading-tight">{character.name}</p>
         <p className="text-parchment/50 text-xs mt-0.5">
-          {[character.race, character.class, `${character.level} ур.`].filter(Boolean).join(' • ')}
+          {[
+            character.race, character.subrace, character.class, character.subclass,
+            `${character.level} ур.`
+          ].filter(Boolean).join(' • ')}
         </p>
       </div>
 
@@ -77,7 +84,7 @@ export function CharacterSheet({ character }: Props) {
 
       <div className="p-3">
         {tab === 'combat' && (
-          <CombatTab character={character} hpDelta={hpDelta} setHpDelta={setHpDelta} saving={saving} applyHP={applyHP} handleCustomHP={handleCustomHP} />
+          <CombatTab character={character} hpDelta={hpDelta} setHpDelta={setHpDelta} saving={saving} applyHP={applyHP} handleCustomHP={handleCustomHP}  />
         )}
         {tab === 'stats' && <StatsTab character={character} />}
         {tab === 'spells' && <SpellsTab character={character} />}
@@ -109,6 +116,9 @@ function CombatTab({ character, hpDelta, setHpDelta, saving, applyHP, handleCust
         <div className="w-full h-2 bg-dark-border rounded-full overflow-hidden mb-3">
           <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct * 100}%` }} />
         </div>
+        {character.temp_hp > 0 && (
+          <p className="text-xs text-blue-300 mb-2">+{character.temp_hp} врем. HP</p>
+        )}
         <div className="flex gap-1 mb-2">
           {[-5, -1, 1, 5].map((d) => (
             <button
@@ -199,20 +209,38 @@ function SpellsTab({ character }: { character: Character }) {
   )
 }
 
+interface WeaponEntry { name?: string; attack_bonus?: string; damage?: string }
+
 function InventoryTab({ character }: { character: Character }) {
+  const weapons = Array.isArray(character.weapons) ? (character.weapons as WeaponEntry[]) : []
+
   return (
     <div className="flex flex-col gap-3">
-      {character.weapons != null && (
+      {weapons.length > 0 && (
         <div>
           <p className="text-parchment/50 text-xs font-fantasy mb-1">Оружие</p>
-          <pre className="text-parchment/70 text-xs bg-dark p-2 rounded border border-dark-border overflow-auto max-h-32">
-            {JSON.stringify(character.weapons as object, null, 2)}
-          </pre>
+          <div className="flex flex-col gap-1">
+            {weapons.map((w, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs px-2 py-1 bg-dark rounded border border-dark-border/50">
+                <span className="flex-1 text-parchment">{w.name || '—'}</span>
+                {w.attack_bonus && <span className="text-gold-light font-mono">{w.attack_bonus}</span>}
+                {w.damage && <span className="text-parchment/50">{w.damage}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {character.inventory && (
+        <div>
+          <p className="text-parchment/50 text-xs font-fantasy mb-1">Инвентарь</p>
+          <p className="text-parchment/70 text-xs bg-dark p-2 rounded border border-dark-border whitespace-pre-wrap">
+            {character.inventory}
+          </p>
         </div>
       )}
       <div>
         <p className="text-parchment/50 text-xs font-fantasy mb-1">Заметки</p>
-        <p className="text-parchment/70 text-xs bg-dark p-2 rounded border border-dark-border min-h-16 whitespace-pre-wrap">
+        <p className="text-parchment/70 text-xs bg-dark p-2 rounded border border-dark-border min-h-[4rem] whitespace-pre-wrap">
           {character.notes || <span className="text-parchment/30 italic">Пусто</span>}
         </p>
       </div>

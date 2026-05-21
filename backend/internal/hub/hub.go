@@ -37,6 +37,7 @@ const (
 	EvRulerUpdate    = "RULER_UPDATE"
 	EvFullState      = "FULL_STATE_UPDATE"
 	EvMapUpdate      = "MAP_UPDATE"
+	EvCharUpdate     = "CHARACTER_UPDATE"
 )
 
 type Message struct {
@@ -281,7 +282,48 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		}
 		h.broadcastToRoom(c.room, EvGridUpdate, p)
 
-	case EvFogReveal, EvFogClear:
+	case EvFogReveal:
+		if c.role != "dm" {
+			return
+		}
+		var newCells [][]int
+		if err := json.Unmarshal(msg.Payload, &newCells); err != nil {
+			return
+		}
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			return
+		}
+		var existing [][]int
+		if len(gs.FogCells) > 0 {
+			json.Unmarshal(gs.FogCells, &existing) //nolint:errcheck
+		}
+		// deduplicate by building a set
+		type cell struct{ x, y int }
+		seen := make(map[cell]struct{}, len(existing)+len(newCells))
+		for _, c := range existing {
+			if len(c) == 2 {
+				seen[cell{c[0], c[1]}] = struct{}{}
+			}
+		}
+		for _, c := range newCells {
+			if len(c) == 2 {
+				seen[cell{c[0], c[1]}] = struct{}{}
+			}
+		}
+		merged := make([][]int, 0, len(seen))
+		for k := range seen {
+			merged = append(merged, []int{k.x, k.y})
+		}
+		data, _ := json.Marshal(merged)
+		gs.FogCells = json.RawMessage(data)
+		if err := h.store.UpsertGameState(ctx, gs); err != nil {
+			log.Printf("hub: fog reveal: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvFogReveal, merged)
+
+	case EvFogClear:
 		if c.role != "dm" {
 			return
 		}
@@ -289,12 +331,12 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		if err != nil {
 			return
 		}
-		gs.FogCells = msg.Payload
+		gs.FogCells = json.RawMessage("[]")
 		if err := h.store.UpsertGameState(ctx, gs); err != nil {
-			log.Printf("hub: fog update: %v", err)
+			log.Printf("hub: fog clear: %v", err)
 			return
 		}
-		h.broadcastToRoom(c.room, msg.Type, msg.Payload)
+		h.broadcastToRoom(c.room, EvFogClear, [][]int{})
 
 	case EvInitUpdate:
 		if c.role != "dm" {
@@ -312,11 +354,48 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		h.broadcastToRoom(c.room, EvInitUpdate, msg.Payload)
 		h.publish(ctx, c.userID, roomID, EvInitUpdate, msg.Payload)
 
-	case EvInitNext, EvInitEnd:
+	case EvInitNext:
 		if c.role != "dm" {
 			return
 		}
-		h.broadcastToRoom(c.room, msg.Type, msg.Payload)
+		h.broadcastToRoom(c.room, EvInitNext, msg.Payload)
+
+	case EvInitEnd:
+		if c.role != "dm" {
+			return
+		}
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			return
+		}
+		gs.InitiativeOrder = json.RawMessage("[]")
+		if err := h.store.UpsertGameState(ctx, gs); err != nil {
+			log.Printf("hub: init end: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvInitEnd, []struct{}{})
+
+	case EvTokenUpdate:
+		if c.role != "dm" {
+			return
+		}
+		var p struct {
+			ID        uuid.UUID `json:"id"`
+			CurrentHP *int      `json:"current_hp"`
+		}
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			return
+		}
+		token, err := h.store.UpdateTokenHP(ctx, p.ID, p.CurrentHP)
+		if err != nil {
+			log.Printf("hub: update token hp: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvTokenUpdate, token)
+
+	case EvCharUpdate:
+		// relay to all room members so HP / stat changes propagate in real time
+		h.broadcastToRoom(c.room, EvCharUpdate, msg.Payload)
 
 	case EvRulerUpdate:
 		h.broadcastToRoom(c.room, EvRulerUpdate, msg.Payload)

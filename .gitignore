@@ -24,3 +24,5 @@ Thumbs.db
 docker-compose.override.yml
 
 legacy/
+
+tmp/

@@ -83,6 +83,7 @@ function dispatch(msg: WsMsg) {
       s.addToken(msg.payload as Parameters<typeof s.addToken>[0])
       break
     case 'TOKEN_MOVE':
+    case 'TOKEN_UPDATE':
       s.updateToken(msg.payload as Parameters<typeof s.updateToken>[0])
       break
     case 'TOKEN_DELETE':
@@ -114,6 +115,9 @@ function dispatch(msg: WsMsg) {
       break
     case 'MAP_UPDATE':
       s.setMapImage((msg.payload as { map_image_url: string }).map_image_url)
+      break
+    case 'CHARACTER_UPDATE':
+      s.updateCharacter(msg.payload as Parameters<typeof s.updateCharacter>[0])
       break
   }
 }

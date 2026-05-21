@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useCallback } from 'react'
 import Konva from 'konva'
 import { useGameStore } from '@/store/gameStore'
 import { useAuthStore } from '@/store/authStore'
@@ -9,11 +9,17 @@ interface Props {
   sendMessage: (type: string, payload?: unknown) => void
 }
 
+// Fixed world coordinate space — independent of viewport size.
+// All positions (tokens, map, grid, ruler) use these dimensions.
+const WORLD_W = 1000
+const WORLD_H = 1000
+
 const DISPOSITION_COLOR: Record<string, string> = {
   friendly: '#a88c52',
-  neutral: '#5d6d7e',
+  neutral: '#c9b42e',
   hostile: '#c0392b',
 }
+const PC_COLOR = '#2471a3'
 
 export default function GameCanvas({ sendMessage }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -25,7 +31,13 @@ export default function GameCanvas({ sendMessage }: Props) {
     tokens: Konva.Layer
     ruler: Konva.Layer
   } | null>(null)
-  const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
+
+  // Mutable refs for Konva event handlers — avoids stale closures
+  const activeToolRef = useRef<'pointer' | 'fog' | 'ruler'>('pointer')
+  const sendMessageRef = useRef(sendMessage)
+  const isPaintingRef = useRef(false)
+  const rulerStartRef = useRef<{ x: number; y: number } | null>(null)
+  const lastFogCellRef = useRef<string>('')
 
   const myUserId = useAuthStore((s) => s.user?.id)
   const tokens = useGameStore((s) => s.tokens)
@@ -35,8 +47,40 @@ export default function GameCanvas({ sendMessage }: Props) {
   const activeInitIndex = useGameStore((s) => s.activeInitIndex)
   const selectedTokenId = useGameStore((s) => s.selectedTokenId)
   const rulerPos = useGameStore((s) => s.rulerPos)
+  const activeTool = useGameStore((s) => s.activeTool)
 
-  // Init stage once
+  // Keep refs in sync with reactive values
+  useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
+  useEffect(() => { sendMessageRef.current = sendMessage }, [sendMessage])
+
+  // Convert stage pointer position to world coordinates
+  const getWorldPos = (stage: Konva.Stage) => {
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return null
+    const scale = stage.scaleX()
+    const pos = stage.position()
+    return {
+      x: (pointer.x - pos.x) / scale,
+      y: (pointer.y - pos.y) / scale,
+    }
+  }
+
+  const revealFogAtPointer = useCallback((stage: Konva.Stage) => {
+    const wp = getWorldPos(stage)
+    if (!wp) return
+    const gridSize = useGameStore.getState().gameState?.grid_size ?? 50
+    const cx = Math.floor(wp.x / gridSize)
+    const cy = Math.floor(wp.y / gridSize)
+    if (cx < 0 || cy < 0) return
+    const key = `${cx},${cy}`
+    if (lastFogCellRef.current === key) return
+    lastFogCellRef.current = key
+    const existing = useGameStore.getState().gameState?.fog_cells ?? []
+    if (existing.some(([x, y]: number[]) => x === cx && y === cy)) return
+    sendMessageRef.current('FOG_REVEAL', [[cx, cy]])
+  }, [])
+
+  // Init stage once — all persistent event handlers live here
   useEffect(() => {
     if (!containerRef.current) return
     const container = containerRef.current
@@ -45,6 +89,7 @@ export default function GameCanvas({ sendMessage }: Props) {
       container,
       width: container.clientWidth || 800,
       height: container.clientHeight || 600,
+      draggable: true,
     })
 
     const mapLayer = new Konva.Layer()
@@ -57,22 +102,85 @@ export default function GameCanvas({ sendMessage }: Props) {
     stageRef.current = stage
     layersRef.current = { map: mapLayer, grid: gridLayer, fog: fogLayer, tokens: tokenLayer, ruler: rulerLayer }
 
-    stage.on('click', (e) => {
+    // ── Zoom via mouse wheel ──────────────────────────────────────────────────
+    stage.on('wheel', (e) => {
+      e.evt.preventDefault()
+      const oldScale = stage.scaleX()
+      const pointer = stage.getPointerPosition()
+      if (!pointer) return
+      const mousePointTo = {
+        x: (pointer.x - stage.x()) / oldScale,
+        y: (pointer.y - stage.y()) / oldScale,
+      }
+      const factor = e.evt.deltaY < 0 ? 1.1 : 1 / 1.1
+      const newScale = Math.max(0.1, Math.min(10, oldScale * factor))
+      stage.scale({ x: newScale, y: newScale })
+      stage.position({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      })
+    })
+
+    // ── Deselect on bare stage click ─────────────────────────────────────────
+    stage.on('click tap', (e) => {
       if (e.target === stage) {
         useGameStore.getState().setSelectedToken(null)
         useGameStore.getState().setSelectedChar(null)
       }
     })
 
-    setStageSize({ w: container.clientWidth || 800, h: container.clientHeight || 600 })
+    // ── Fog painting & ruler start ───────────────────────────────────────────
+    stage.on('mousedown touchstart', (e) => {
+      const tool = activeToolRef.current
+      if (tool === 'fog') {
+        e.evt.preventDefault()
+        isPaintingRef.current = true
+        lastFogCellRef.current = ''
+        revealFogAtPointer(stage)
+      } else if (tool === 'ruler') {
+        const wp = getWorldPos(stage)
+        if (!wp) return
+        rulerStartRef.current = wp
+        sendMessageRef.current('RULER_UPDATE', {
+          x1: wp.x / WORLD_W, y1: wp.y / WORLD_H,
+          x2: wp.x / WORLD_W, y2: wp.y / WORLD_H,
+        })
+      }
+    })
 
+    stage.on('mousemove touchmove', (e) => {
+      const tool = activeToolRef.current
+      if (tool === 'fog' && isPaintingRef.current) {
+        e.evt.preventDefault()
+        revealFogAtPointer(stage)
+      } else if (tool === 'ruler' && rulerStartRef.current) {
+        const wp = getWorldPos(stage)
+        if (!wp) return
+        const s = rulerStartRef.current
+        sendMessageRef.current('RULER_UPDATE', {
+          x1: s.x / WORLD_W, y1: s.y / WORLD_H,
+          x2: wp.x / WORLD_W, y2: wp.y / WORLD_H,
+        })
+      }
+    })
+
+    stage.on('mouseup touchend', () => {
+      isPaintingRef.current = false
+      lastFogCellRef.current = ''
+      if (activeToolRef.current === 'ruler') {
+        rulerStartRef.current = null
+        sendMessageRef.current('RULER_UPDATE', null)
+      }
+    })
+
+    // ── Resize observer ───────────────────────────────────────────────────────
     const obs = new ResizeObserver(([entry]) => {
       const w = Math.floor(entry.contentRect.width)
       const h = Math.floor(entry.contentRect.height)
-      if (w === 0 || h === 0) return
-      stage.width(w)
-      stage.height(h)
-      setStageSize({ w, h })
+      if (w > 0 && h > 0) {
+        stage.width(w)
+        stage.height(h)
+      }
     })
     obs.observe(container)
 
@@ -82,66 +190,66 @@ export default function GameCanvas({ sendMessage }: Props) {
       stageRef.current = null
       layersRef.current = null
     }
-  }, [])
+  }, [revealFogAtPointer])
 
-  // Map layer
+  // ── Sync draggable + cursor when tool changes ─────────────────────────────
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    stage.draggable(activeTool === 'pointer')
+    if (containerRef.current) {
+      containerRef.current.style.cursor =
+        activeTool === 'fog' ? 'crosshair' :
+        activeTool === 'ruler' ? 'crosshair' : 'grab'
+    }
+  }, [activeTool])
+
+  // ── Map layer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.map
-    const stage = stageRef.current
-    if (!layer || !stage || stageSize.w === 0) return
-
+    if (!layer) return
     let cancelled = false
     layer.destroyChildren()
-
     const mapUrl = gameState?.map_image_url
     if (mapUrl) {
       Konva.Image.fromURL(mapUrl, (img) => {
         if (cancelled) return
-        img.setAttrs({ width: stage.width(), height: stage.height() })
+        img.setAttrs({ width: WORLD_W, height: WORLD_H })
         layer.add(img)
         layer.batchDraw()
       })
     } else {
-      layer.add(new Konva.Rect({ width: stage.width(), height: stage.height(), fill: '#1a1814' }))
+      layer.add(new Konva.Rect({ width: WORLD_W, height: WORLD_H, fill: '#1a1814' }))
       layer.batchDraw()
     }
-
     return () => { cancelled = true }
-  }, [gameState?.map_image_url, stageSize])
+  }, [gameState?.map_image_url])
 
-  // Grid layer
+  // ── Grid layer ────────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.grid
-    const stage = stageRef.current
-    if (!layer || !stage || stageSize.w === 0) return
-
+    if (!layer) return
     layer.destroyChildren()
     const gridSize = gameState?.grid_size ?? 50
-    const gridEnabled = gameState?.grid_enabled ?? true
-
-    if (gridEnabled && gridSize > 0) {
-      const w = stage.width()
-      const h = stage.height()
-      for (let x = 0; x <= w; x += gridSize) {
-        layer.add(new Konva.Line({ points: [x, 0, x, h], stroke: 'rgba(74,67,56,0.4)', strokeWidth: 0.5 }))
+    if (gameState?.grid_enabled && gridSize > 0) {
+      for (let x = 0; x <= WORLD_W; x += gridSize) {
+        layer.add(new Konva.Line({ points: [x, 0, x, WORLD_H], stroke: 'rgba(74,67,56,0.4)', strokeWidth: 0.5 }))
       }
-      for (let y = 0; y <= h; y += gridSize) {
-        layer.add(new Konva.Line({ points: [0, y, w, y], stroke: 'rgba(74,67,56,0.4)', strokeWidth: 0.5 }))
+      for (let y = 0; y <= WORLD_H; y += gridSize) {
+        layer.add(new Konva.Line({ points: [0, y, WORLD_W, y], stroke: 'rgba(74,67,56,0.4)', strokeWidth: 0.5 }))
       }
     }
     layer.batchDraw()
-  }, [gameState?.grid_size, gameState?.grid_enabled, stageSize])
+  }, [gameState?.grid_size, gameState?.grid_enabled])
 
-  // Fog layer
+  // ── Fog layer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.fog
-    if (!layer || stageSize.w === 0) return
-
+    if (!layer) return
     layer.destroyChildren()
     const fogCells = gameState?.fog_cells ?? []
     const gridSize = gameState?.grid_size ?? 50
-    const fogOpacity = role === 'dm' ? 0.45 : 0.9
-
+    const fogOpacity = role === 'dm' ? 0.45 : 0.92
     for (const cell of fogCells) {
       layer.add(new Konva.Rect({
         x: (cell[0] ?? 0) * gridSize,
@@ -152,15 +260,14 @@ export default function GameCanvas({ sendMessage }: Props) {
       }))
     }
     layer.batchDraw()
-  }, [gameState?.fog_cells, gameState?.grid_size, role, stageSize])
+  }, [gameState?.fog_cells, gameState?.grid_size, role])
 
-  // Token layer
+  // ── Token layer ───────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.tokens
-    const stage = stageRef.current
-    if (!layer || !stage || stageSize.w === 0) return
-
+    if (!layer) return
     layer.destroyChildren()
+
     const charMap = new Map(characters.map((c) => [c.id, c]))
     const gridSize = gameState?.grid_size ?? 50
     const tokenRadius = Math.max(14, Math.min(gridSize * 0.4, 28))
@@ -168,13 +275,13 @@ export default function GameCanvas({ sendMessage }: Props) {
 
     for (const token of tokens) {
       const char = token.character_id ? charMap.get(token.character_id) : undefined
-      const x = token.rel_x * stage.width()
-      const y = token.rel_y * stage.height()
+      const x = token.rel_x * WORLD_W
+      const y = token.rel_y * WORLD_H
       const activeEntry = initiativeOrder[activeInitIndex % Math.max(initiativeOrder.length, 1)]
       const isActive = initiativeOrder.length > 0 && activeEntry?.character_id === token.character_id
       const isSelected = token.id === selectedTokenId
       const canDrag = role === 'dm' || (token.token_type === 'pc' && char?.user_id === myUserId)
-      const color = DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral
+      const color = token.token_type === 'pc' ? PC_COLOR : (DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral)
 
       const group = new Konva.Group({ x, y, draggable: canDrag })
 
@@ -186,8 +293,12 @@ export default function GameCanvas({ sendMessage }: Props) {
       }
       group.add(new Konva.Circle({ radius: tokenRadius, fill: color, stroke: '#1a1814', strokeWidth: 1.5 }))
 
-      if (char) {
-        const hpPct = Math.max(0, char.hp) / Math.max(char.max_hp, 1)
+      const hpPct = char
+        ? Math.max(0, char.hp) / Math.max(char.max_hp, 1)
+        : (token.current_hp !== undefined && token.max_hp != null && token.max_hp > 0)
+          ? Math.max(0, token.current_hp) / token.max_hp
+          : null
+      if (hpPct !== null) {
         const hpColor = hpPct > 0.5 ? '#27ae60' : hpPct > 0.25 ? '#f39c12' : '#c0392b'
         const bW = tokenRadius * 2
         group.add(new Konva.Rect({ x: -tokenRadius, y: -tokenRadius - 9, width: bW, height: 5, fill: '#1a1814', cornerRadius: 2 }))
@@ -208,52 +319,70 @@ export default function GameCanvas({ sendMessage }: Props) {
         shadowEnabled: true,
       }))
 
-      group.on('click tap', () => {
+      group.on('click tap', (e) => {
+        e.cancelBubble = true
         const s = useGameStore.getState()
         const next = token.id === s.selectedTokenId ? null : token.id
         s.setSelectedToken(next)
         s.setSelectedChar(next && char ? char.id : null)
       })
 
+      // Prevent stage pan from firing while dragging a token
+      group.on('dragstart', () => {
+        stageRef.current?.draggable(false)
+      })
+
       group.on('dragend', (e) => {
-        const sw = stage.width()
-        const sh = stage.height()
-        const nx = Math.max(0, Math.min(1, e.target.x() / sw))
-        const ny = Math.max(0, Math.min(1, e.target.y() / sh))
-        sendMessage('TOKEN_MOVE', { id: token.id, rel_x: nx, rel_y: ny })
-        e.target.position({ x: nx * sw, y: ny * sh })
+        if (activeToolRef.current === 'pointer') {
+          stageRef.current?.draggable(true)
+        }
+        const nx = Math.max(0, Math.min(1, e.target.x() / WORLD_W))
+        const ny = Math.max(0, Math.min(1, e.target.y() / WORLD_H))
+        sendMessageRef.current('TOKEN_MOVE', { id: token.id, rel_x: nx, rel_y: ny })
+        e.target.position({ x: nx * WORLD_W, y: ny * WORLD_H })
       })
 
       layer.add(group)
     }
     layer.batchDraw()
-  }, [tokens, characters, gameState, activeInitIndex, selectedTokenId, role, myUserId, sendMessage, stageSize])
+  }, [tokens, characters, gameState, activeInitIndex, selectedTokenId, role, myUserId])
 
-  // Ruler layer
+  // ── Ruler layer ───────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.ruler
-    const stage = stageRef.current
-    if (!layer || !stage || stageSize.w === 0) return
-
+    if (!layer) return
     layer.destroyChildren()
     if (rulerPos) {
-      const w = stage.width()
-      const h = stage.height()
+      const x1 = rulerPos.x1 * WORLD_W
+      const y1 = rulerPos.y1 * WORLD_H
+      const x2 = rulerPos.x2 * WORLD_W
+      const y2 = rulerPos.y2 * WORLD_H
+      const dx = x2 - x1
+      const dy = y2 - y1
+      const gridSize = useGameStore.getState().gameState?.grid_size ?? 50
+      const distFt = Math.round((Math.sqrt(dx * dx + dy * dy) / gridSize) * 5)
+
       layer.add(new Konva.Line({
-        points: [rulerPos.x1 * w, rulerPos.y1 * h, rulerPos.x2 * w, rulerPos.y2 * h],
+        points: [x1, y1, x2, y2],
         stroke: '#d4af70',
         strokeWidth: 2,
         dash: [8, 4],
       }))
-      layer.add(new Konva.Circle({
-        x: rulerPos.x2 * w,
-        y: rulerPos.y2 * h,
-        radius: 4,
+      layer.add(new Konva.Circle({ x: x2, y: y2, radius: 4, fill: '#d4af70' }))
+
+      const label = new Konva.Label({ x: x2 + 8, y: y2 - 20 })
+      label.add(new Konva.Tag({ fill: 'rgba(0,0,0,0.75)', cornerRadius: 3 }))
+      label.add(new Konva.Text({
+        text: `${distFt} ft`,
+        padding: 4,
         fill: '#d4af70',
+        fontSize: 12,
+        fontFamily: 'Crimson Text, serif',
       }))
+      layer.add(label)
     }
     layer.batchDraw()
-  }, [rulerPos, stageSize])
+  }, [rulerPos])
 
-  return <div ref={containerRef} className="w-full h-full bg-dark cursor-crosshair" />
+  return <div ref={containerRef} className="w-full h-full" />
 }
