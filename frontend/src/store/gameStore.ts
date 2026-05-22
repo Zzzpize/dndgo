@@ -220,19 +220,10 @@ export const useGameStore = create<GameStore>((set) => ({
     })),
 
   setInitiativeOrder: (order) =>
-    set((s) => {
-      const prevOrder = s.gameState?.initiative_order ?? []
-      const prevActive = prevOrder[s.activeInitIndex % Math.max(prevOrder.length, 1)]
-      let newIndex = 0
-      if (prevActive?.token_id && prevOrder.length > 0) {
-        const found = order.findIndex((e) => e.token_id === prevActive.token_id)
-        newIndex = found >= 0 ? found : 0
-      }
-      return {
-        gameState: s.gameState ? { ...s.gameState, initiative_order: order } : s.gameState,
-        activeInitIndex: newIndex,
-      }
-    }),
+    set((s) => ({
+      gameState: s.gameState ? { ...s.gameState, initiative_order: order } : s.gameState,
+      activeInitIndex: 0,
+    })),
 
   nextInitiative: () =>
     set((s) => {
