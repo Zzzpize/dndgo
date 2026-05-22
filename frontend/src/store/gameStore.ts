@@ -16,10 +16,18 @@ export interface MapToken {
   max_hp?: number
 }
 
+export interface NpcFolder {
+  id: string
+  room_id: string
+  name: string
+  created_at: string
+}
+
 export interface NPC {
   id: string
   user_id: string
   room_id: string
+  folder_id?: string | null
   name: string
   disposition: 'friendly' | 'neutral' | 'hostile'
   ac: string
@@ -28,12 +36,17 @@ export interface NPC {
   type_alignment: string
   abilities: Record<string, number>
   actions: string[]
+  created_at: string
 }
 
 export interface InitiativeEntry {
+  token_id: string
   character_id?: string
+  npc_id?: string
   name: string
   initiative: number
+  advantage?: number
+  dex_mod?: number
 }
 
 export interface GameStateData {
@@ -98,6 +111,7 @@ interface GameStore {
   gameState: GameStateData | null
   characters: Character[]
   npcs: NPC[]
+  npcFolders: NpcFolder[]
   diceLogs: DiceLogEntry[]
   isConnected: boolean
   role: 'dm' | 'player' | null
@@ -117,6 +131,10 @@ interface GameStore {
   addNpc: (n: NPC) => void
   updateNpc: (n: NPC) => void
   removeNpc: (id: string) => void
+  setNpcFolders: (folders: NpcFolder[]) => void
+  addNpcFolder: (f: NpcFolder) => void
+  removeNpcFolder: (id: string) => void
+  setNpcFolder: (npcId: string, folderId: string | null) => void
   applyFullState: (gs: GameStateData, tokens: MapToken[]) => void
   addToken: (t: MapToken) => void
   updateToken: (t: MapToken) => void
@@ -139,6 +157,7 @@ const initialState = {
   gameState: null,
   characters: [] as Character[],
   npcs: [] as NPC[],
+  npcFolders: [] as NpcFolder[],
   diceLogs: [] as DiceLogEntry[],
   isConnected: false,
   role: null as 'dm' | 'player' | null,
@@ -165,6 +184,14 @@ export const useGameStore = create<GameStore>((set) => ({
   addNpc: (n) => set((s) => ({ npcs: [...s.npcs, n] })),
   updateNpc: (n) => set((s) => ({ npcs: s.npcs.map((x) => (x.id === n.id ? n : x)) })),
   removeNpc: (id) => set((s) => ({ npcs: s.npcs.filter((x) => x.id !== id) })),
+
+  setNpcFolders: (npcFolders) => set({ npcFolders }),
+  addNpcFolder: (f) => set((s) => ({ npcFolders: [...s.npcFolders, f] })),
+  removeNpcFolder: (id) => set((s) => ({ npcFolders: s.npcFolders.filter((f) => f.id !== id) })),
+  setNpcFolder: (npcId, folderId) =>
+    set((s) => ({
+      npcs: s.npcs.map((n) => (n.id === npcId ? { ...n, folder_id: folderId } : n)),
+    })),
 
   applyFullState: (gs, tokens) => {
     const parsed: GameStateData = {
@@ -193,10 +220,19 @@ export const useGameStore = create<GameStore>((set) => ({
     })),
 
   setInitiativeOrder: (order) =>
-    set((s) => ({
-      gameState: s.gameState ? { ...s.gameState, initiative_order: order } : s.gameState,
-      activeInitIndex: 0,
-    })),
+    set((s) => {
+      const prevOrder = s.gameState?.initiative_order ?? []
+      const prevActive = prevOrder[s.activeInitIndex % Math.max(prevOrder.length, 1)]
+      let newIndex = 0
+      if (prevActive?.token_id && prevOrder.length > 0) {
+        const found = order.findIndex((e) => e.token_id === prevActive.token_id)
+        newIndex = found >= 0 ? found : 0
+      }
+      return {
+        gameState: s.gameState ? { ...s.gameState, initiative_order: order } : s.gameState,
+        activeInitIndex: newIndex,
+      }
+    }),
 
   nextInitiative: () =>
     set((s) => {

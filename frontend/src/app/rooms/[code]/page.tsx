@@ -73,6 +73,7 @@ export default function RoomPage() {
   const setRole = useGameStore((s) => s.setRole)
   const setCharacters = useGameStore((s) => s.setCharacters)
   const setNpcs = useGameStore((s) => s.setNpcs)
+  const setNpcFolders = useGameStore((s) => s.setNpcFolders)
   const setSelectedChar = useGameStore((s) => s.setSelectedChar)
   const setSelectedToken = useGameStore((s) => s.setSelectedToken)
   const reset = useGameStore((s) => s.reset)
@@ -113,18 +114,20 @@ export default function RoomPage() {
       api.get<RoomInfo>(`/api/v1/rooms/${code}`),
       api.get(`/api/v1/rooms/${code}/characters`),
       api.get(`/api/v1/rooms/${code}/npcs`),
+      api.get(`/api/v1/rooms/${code}/npc-folders`),
     ])
-      .then(([roomRes, charsRes, npcsRes]) => {
+      .then(([roomRes, charsRes, npcsRes, foldersRes]) => {
         setRoom(roomRes.data)
         setRole(roomRes.data.role as 'dm' | 'player')
         setCharacters(charsRes.data)
         setNpcs(npcsRes.data)
+        setNpcFolders(foldersRes.data)
       })
       .catch(() => {
         router.replace('/rooms')
       })
       .finally(() => setLoading(false))
-  }, [hydrated, user, code, router, setRole, setCharacters, setNpcs])
+  }, [hydrated, user, code, router, setRole, setCharacters, setNpcs, setNpcFolders])
 
   useEffect(() => {
     return () => {
@@ -201,7 +204,7 @@ export default function RoomPage() {
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 relative overflow-hidden">
-            <GameCanvas sendMessage={sendMessage} />
+            <GameCanvas sendMessage={sendMessage} roomCode={code} />
             <DiceLogOverlay />
             {role === 'dm' && <ToolBar />}
           </div>

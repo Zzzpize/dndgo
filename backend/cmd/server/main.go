@@ -124,14 +124,24 @@ func main() {
 			r.Post("/{code}/characters", charHandler.Create)
 			r.Get("/{code}/characters", charHandler.ListByRoom)
 			r.Post("/{code}/npcs", npcHandler.Create)
+			r.Post("/{code}/npcs/from-bestiary", npcHandler.CreateFromBestiary)
 			r.Get("/{code}/npcs", npcHandler.ListByRoom)
+			r.Post("/{code}/npc-folders", npcHandler.CreateFolder)
+			r.Get("/{code}/npc-folders", npcHandler.ListFolders)
 			r.Get("/{code}/events", gameHandler.ListEvents)
 		})
 
 		r.Route("/npcs", func(r chi.Router) {
 			r.Use(auth.JWT(jwtSecret))
 			r.Put("/{id}", npcHandler.Update)
+			r.Patch("/{id}/folder", npcHandler.SetFolder)
 			r.Delete("/{id}", npcHandler.Delete)
+		})
+
+		r.Route("/npc-folders", func(r chi.Router) {
+			r.Use(auth.JWT(jwtSecret))
+			r.Put("/{id}", npcHandler.RenameFolder)
+			r.Delete("/{id}", npcHandler.DeleteFolder)
 		})
 
 		r.Route("/characters", func(r chi.Router) {

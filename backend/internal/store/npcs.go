@@ -12,6 +12,7 @@ type NPC struct {
 	ID            uuid.UUID
 	UserID        uuid.UUID
 	RoomID        uuid.UUID
+	FolderID      *uuid.UUID
 	Name          string
 	Disposition   string
 	AC            string
@@ -25,6 +26,7 @@ type NPC struct {
 }
 
 type NPCInput struct {
+	FolderID      *uuid.UUID
 	Name          string
 	Disposition   string
 	AC            string
@@ -35,12 +37,12 @@ type NPCInput struct {
 	Actions       json.RawMessage
 }
 
-const npcColumns = `id, user_id, room_id, name, disposition, ac, max_hp, speed, type_alignment, abilities, actions, created_at, updated_at`
+const npcColumns = `id, user_id, room_id, folder_id, name, disposition, ac, max_hp, speed, type_alignment, abilities, actions, created_at, updated_at`
 
 func scanNPC(row interface{ Scan(...any) error }) (NPC, error) {
 	var n NPC
 	err := row.Scan(
-		&n.ID, &n.UserID, &n.RoomID,
+		&n.ID, &n.UserID, &n.RoomID, &n.FolderID,
 		&n.Name, &n.Disposition, &n.AC, &n.MaxHP,
 		&n.Speed, &n.TypeAlignment,
 		&n.Abilities, &n.Actions,
@@ -51,10 +53,10 @@ func scanNPC(row interface{ Scan(...any) error }) (NPC, error) {
 
 func (s *Store) CreateNPC(ctx context.Context, userID, roomID uuid.UUID, in NPCInput) (NPC, error) {
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO npcs (user_id, room_id, name, disposition, ac, max_hp, speed, type_alignment, abilities, actions)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
+		INSERT INTO npcs (user_id, room_id, folder_id, name, disposition, ac, max_hp, speed, type_alignment, abilities, actions)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb)
 		RETURNING `+npcColumns,
-		userID, roomID, in.Name, in.Disposition, in.AC, in.MaxHP,
+		userID, roomID, in.FolderID, in.Name, in.Disposition, in.AC, in.MaxHP,
 		in.Speed, in.TypeAlignment,
 		jsonOrEmpty(in.Abilities), jsonArrayOrEmpty(in.Actions),
 	)
@@ -92,12 +94,12 @@ func (s *Store) GetNPCByID(ctx context.Context, id uuid.UUID) (NPC, error) {
 func (s *Store) UpdateNPC(ctx context.Context, id uuid.UUID, in NPCInput) (NPC, error) {
 	row := s.pool.QueryRow(ctx, `
 		UPDATE npcs SET
-			name=$1, disposition=$2, ac=$3, max_hp=$4, speed=$5,
-			type_alignment=$6, abilities=$7::jsonb, actions=$8::jsonb,
+			folder_id=$1, name=$2, disposition=$3, ac=$4, max_hp=$5, speed=$6,
+			type_alignment=$7, abilities=$8::jsonb, actions=$9::jsonb,
 			updated_at=NOW()
-		WHERE id=$9
+		WHERE id=$10
 		RETURNING `+npcColumns,
-		in.Name, in.Disposition, in.AC, in.MaxHP, in.Speed,
+		in.FolderID, in.Name, in.Disposition, in.AC, in.MaxHP, in.Speed,
 		in.TypeAlignment, jsonOrEmpty(in.Abilities), jsonArrayOrEmpty(in.Actions), id,
 	)
 	return scanNPC(row)

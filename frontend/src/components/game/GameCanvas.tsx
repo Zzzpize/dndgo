@@ -4,13 +4,14 @@ import { useRef, useEffect, useCallback } from 'react'
 import Konva from 'konva'
 import { useGameStore } from '@/store/gameStore'
 import { useAuthStore } from '@/store/authStore'
+import api from '@/lib/api'
 
 interface Props {
   sendMessage: (type: string, payload?: unknown) => void
+  roomCode: string
 }
 
-// Fixed world coordinate space — independent of viewport size.
-// All positions (tokens, map, grid, ruler) use these dimensions.
+
 const WORLD_W = 1000
 const WORLD_H = 1000
 
@@ -21,7 +22,7 @@ const DISPOSITION_COLOR: Record<string, string> = {
 }
 const PC_COLOR = '#2471a3'
 
-export default function GameCanvas({ sendMessage }: Props) {
+export default function GameCanvas({ sendMessage, roomCode }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage | null>(null)
   const layersRef = useRef<{
@@ -32,7 +33,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     ruler: Konva.Layer
   } | null>(null)
 
-  // Mutable refs for Konva event handlers — avoids stale closures
   const activeToolRef = useRef<'pointer' | 'fog' | 'ruler'>('pointer')
   const sendMessageRef = useRef(sendMessage)
   const isPaintingRef = useRef(false)
@@ -49,11 +49,9 @@ export default function GameCanvas({ sendMessage }: Props) {
   const rulerPos = useGameStore((s) => s.rulerPos)
   const activeTool = useGameStore((s) => s.activeTool)
 
-  // Keep refs in sync with reactive values
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   useEffect(() => { sendMessageRef.current = sendMessage }, [sendMessage])
 
-  // Convert stage pointer position to world coordinates
   const getWorldPos = (stage: Konva.Stage) => {
     const pointer = stage.getPointerPosition()
     if (!pointer) return null
@@ -80,7 +78,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     sendMessageRef.current('FOG_REVEAL', [[cx, cy]])
   }, [])
 
-  // Init stage once — all persistent event handlers live here
   useEffect(() => {
     if (!containerRef.current) return
     const container = containerRef.current
@@ -102,7 +99,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     stageRef.current = stage
     layersRef.current = { map: mapLayer, grid: gridLayer, fog: fogLayer, tokens: tokenLayer, ruler: rulerLayer }
 
-    // ── Zoom via mouse wheel ──────────────────────────────────────────────────
     stage.on('wheel', (e) => {
       e.evt.preventDefault()
       const oldScale = stage.scaleX()
@@ -121,7 +117,6 @@ export default function GameCanvas({ sendMessage }: Props) {
       })
     })
 
-    // ── Deselect on bare stage click ─────────────────────────────────────────
     stage.on('click tap', (e) => {
       if (e.target === stage) {
         useGameStore.getState().setSelectedToken(null)
@@ -129,7 +124,6 @@ export default function GameCanvas({ sendMessage }: Props) {
       }
     })
 
-    // ── Fog painting & ruler start ───────────────────────────────────────────
     stage.on('mousedown touchstart', (e) => {
       const tool = activeToolRef.current
       if (tool === 'fog') {
@@ -173,7 +167,6 @@ export default function GameCanvas({ sendMessage }: Props) {
       }
     })
 
-    // ── Resize observer ───────────────────────────────────────────────────────
     const obs = new ResizeObserver(([entry]) => {
       const w = Math.floor(entry.contentRect.width)
       const h = Math.floor(entry.contentRect.height)
@@ -192,7 +185,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     }
   }, [revealFogAtPointer])
 
-  // ── Sync draggable + cursor when tool changes ─────────────────────────────
   useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
@@ -204,7 +196,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     }
   }, [activeTool])
 
-  // ── Map layer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.map
     if (!layer) return
@@ -225,7 +216,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     return () => { cancelled = true }
   }, [gameState?.map_image_url])
 
-  // ── Grid layer ────────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.grid
     if (!layer) return
@@ -242,7 +232,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     layer.batchDraw()
   }, [gameState?.grid_size, gameState?.grid_enabled])
 
-  // ── Fog layer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.fog
     if (!layer) return
@@ -262,7 +251,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     layer.batchDraw()
   }, [gameState?.fog_cells, gameState?.grid_size, role])
 
-  // ── Token layer ───────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.tokens
     if (!layer) return
@@ -278,7 +266,7 @@ export default function GameCanvas({ sendMessage }: Props) {
       const x = token.rel_x * WORLD_W
       const y = token.rel_y * WORLD_H
       const activeEntry = initiativeOrder[activeInitIndex % Math.max(initiativeOrder.length, 1)]
-      const isActive = initiativeOrder.length > 0 && activeEntry?.character_id === token.character_id
+      const isActive = initiativeOrder.length > 0 && !!activeEntry?.token_id && activeEntry.token_id === token.id
       const isSelected = token.id === selectedTokenId
       const canDrag = role === 'dm' || (token.token_type === 'pc' && char?.user_id === myUserId)
       const color = token.token_type === 'pc' ? PC_COLOR : (DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral)
@@ -327,7 +315,6 @@ export default function GameCanvas({ sendMessage }: Props) {
         s.setSelectedChar(next && char ? char.id : null)
       })
 
-      // Prevent stage pan from firing while dragging a token
       group.on('dragstart', () => {
         stageRef.current?.draggable(false)
       })
@@ -347,7 +334,6 @@ export default function GameCanvas({ sendMessage }: Props) {
     layer.batchDraw()
   }, [tokens, characters, gameState, activeInitIndex, selectedTokenId, role, myUserId])
 
-  // ── Ruler layer ───────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = layersRef.current?.ruler
     if (!layer) return
@@ -384,5 +370,68 @@ export default function GameCanvas({ sendMessage }: Props) {
     layer.batchDraw()
   }, [rulerPos])
 
-  return <div ref={containerRef} className="w-full h-full" />
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+
+  const addNpc = useGameStore((s) => s.addNpc)
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const stage = stageRef.current
+    const container = containerRef.current
+    if (!stage || !container) return
+    const raw = e.dataTransfer.getData('application/json')
+    if (!raw) return
+    let data: Record<string, unknown>
+    try { data = JSON.parse(raw) } catch { return }
+
+    const rect = container.getBoundingClientRect()
+    const px = e.clientX - rect.left
+    const py = e.clientY - rect.top
+    const scale = stage.scaleX()
+    const pos = stage.position()
+    const worldX = (px - pos.x) / scale
+    const worldY = (py - pos.y) / scale
+    const relX = Math.max(0, Math.min(1, worldX / WORLD_W))
+    const relY = Math.max(0, Math.min(1, worldY / WORLD_H))
+
+    let npcId: string | undefined = data.npc_id as string | undefined
+    let maxHp: number | undefined = data.max_hp as number | undefined
+    let currentHp: number | undefined = data.current_hp as number | undefined
+
+    if (data.bestiary_id) {
+      try {
+        const { data: npc } = await api.post(`/api/v1/rooms/${roomCode}/npcs/from-bestiary`, {
+          monster_id: data.bestiary_id,
+        })
+        addNpc(npc)
+        npcId = npc.id
+        maxHp = npc.max_hp
+        currentHp = npc.max_hp
+      } catch { /* fallback: place as basic token */ }
+    }
+
+    sendMessageRef.current('TOKEN_CREATE', {
+      token_type: data.token_type,
+      character_id: data.character_id ?? undefined,
+      npc_id: npcId,
+      name: data.name,
+      rel_x: relX,
+      rel_y: relY,
+      disposition: data.disposition ?? 'neutral',
+      max_hp: maxHp,
+      current_hp: currentHp,
+    })
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    />
+  )
 }

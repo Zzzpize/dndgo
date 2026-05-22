@@ -32,11 +32,13 @@ export function useWebSocket(roomCode: string) {
       wsRef.current = ws
 
       ws.onopen = () => {
+        if (wsRef.current !== ws) { ws.close(); return }
         reconnectDelay.current = 1000
         useGameStore.getState().setConnected(true)
       }
 
       ws.onclose = () => {
+        if (wsRef.current !== ws) return
         useGameStore.getState().setConnected(false)
         if (mounted.current) {
           reconnectTimer.current = setTimeout(connect, reconnectDelay.current)
@@ -47,12 +49,11 @@ export function useWebSocket(roomCode: string) {
       ws.onerror = () => ws.close()
 
       ws.onmessage = (e) => {
+        if (wsRef.current !== ws) return
         try {
           const msg = JSON.parse(e.data as string) as WsMsg
           dispatch(msg)
-        } catch {
-          // ignore malformed messages
-        }
+        } catch { }
       }
     }
 
@@ -61,7 +62,9 @@ export function useWebSocket(roomCode: string) {
     return () => {
       mounted.current = false
       clearTimeout(reconnectTimer.current)
-      wsRef.current?.close()
+      const ws = wsRef.current
+      wsRef.current = null
+      ws?.close()
       useGameStore.getState().setConnected(false)
     }
   }, [roomCode])

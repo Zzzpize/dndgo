@@ -30,8 +30,10 @@ func (s *Store) CountMonsters(ctx context.Context, query string) (int64, error) 
 	if query == "" {
 		err = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM monsters`).Scan(&count)
 	} else {
-		err = s.pool.QueryRow(ctx,
-			`SELECT COUNT(*) FROM monsters WHERE search_vector @@ plainto_tsquery('russian', $1)`,
+		err = s.pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM monsters
+			WHERE name_ru ILIKE '%' || $1 || '%'
+			   OR name_en ILIKE '%' || $1 || '%'`,
 			query,
 		).Scan(&count)
 	}
@@ -53,8 +55,14 @@ func (s *Store) ListMonsters(ctx context.Context, query string, limit, offset in
 		rows, err = s.pool.Query(ctx, `
 			SELECT id, name_ru, name_en, type_and_alignment, armor_class, hit_points, speed
 			FROM monsters
-			WHERE search_vector @@ plainto_tsquery('russian', $1)
-			ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
+			WHERE name_ru ILIKE '%' || $1 || '%'
+			   OR name_en ILIKE '%' || $1 || '%'
+			ORDER BY
+			  CASE
+			    WHEN name_ru ILIKE $1 || '%' OR name_en ILIKE $1 || '%' THEN 0
+			    ELSE 1
+			  END,
+			  name_ru
 			LIMIT $2 OFFSET $3`,
 			query, limit, offset,
 		)

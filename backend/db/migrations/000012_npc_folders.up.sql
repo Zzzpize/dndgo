@@ -1,0 +1,8 @@
+CREATE TABLE npc_folders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE npcs ADD COLUMN folder_id UUID REFERENCES npc_folders(id) ON DELETE SET NULL;
