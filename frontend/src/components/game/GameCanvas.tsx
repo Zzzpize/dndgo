@@ -16,11 +16,11 @@ const WORLD_W = 1000
 const WORLD_H = 1000
 
 const DISPOSITION_COLOR: Record<string, string> = {
-  friendly: '#a88c52',
-  neutral: '#c9b42e',
-  hostile: '#c0392b',
+  friendly: '#4d7a38',
+  neutral: '#a08832',
+  hostile: '#8c2e28',
 }
-const PC_COLOR = '#2471a3'
+const PC_COLOR = '#2a5c80'
 
 export default function GameCanvas({ sendMessage, roomCode }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -51,6 +51,20 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
 
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   useEffect(() => { sendMessageRef.current = sendMessage }, [sendMessage])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return
+      const s = useGameStore.getState()
+      if (!s.selectedTokenId || s.role !== 'dm') return
+      sendMessageRef.current('TOKEN_DELETE', { id: s.selectedTokenId })
+      s.setSelectedToken(null)
+      s.setSelectedChar(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const getWorldPos = (stage: Konva.Stage) => {
     const pointer = stage.getPointerPosition()
@@ -315,6 +329,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         s.setSelectedChar(next && char ? char.id : null)
       })
 
+
       group.on('dragstart', () => {
         stageRef.current?.draggable(false)
       })
@@ -369,6 +384,32 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     }
     layer.batchDraw()
   }, [rulerPos])
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const stage = stageRef.current
+    const container = containerRef.current
+    if (!stage || !container) return
+    const rect = container.getBoundingClientRect()
+    const scale = stage.scaleX()
+    const pos = stage.position()
+    const worldX = (e.clientX - rect.left - pos.x) / scale
+    const worldY = (e.clientY - rect.top - pos.y) / scale
+    const s = useGameStore.getState()
+    const gridSize = s.gameState?.grid_size ?? 50
+    const tokenRadius = Math.max(14, Math.min(gridSize * 0.4, 28))
+    for (const token of s.tokens) {
+      const tx = token.rel_x * WORLD_W
+      const ty = token.rel_y * WORLD_H
+      const dist = Math.sqrt((worldX - tx) ** 2 + (worldY - ty) ** 2)
+      if (dist <= tokenRadius + 4) {
+        const char = s.characters.find((c) => c.id === token.character_id)
+        const uid = useAuthStore.getState().user?.id
+        const canEdit = s.role === 'dm' || (token.token_type === 'pc' && char?.user_id === uid)
+        if (canEdit) s.setEditingTokenId(token.id)
+        return
+      }
+    }
+  }
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -432,6 +473,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       className="w-full h-full"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
+      onDoubleClick={handleDoubleClick}
     />
   )
 }

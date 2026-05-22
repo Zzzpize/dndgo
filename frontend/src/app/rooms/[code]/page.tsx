@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/Button'
 import { CharacterSheet } from '@/components/character/CharacterSheet'
 import { CharacterModal } from '@/components/character/CharacterModal'
 import { NpcSheet } from '@/components/game/NpcSheet'
+import { NpcModal } from '@/components/game/NpcModal'
+import { TokenEditModal } from '@/components/game/TokenEditModal'
 import { DMPanel } from '@/components/game/DMPanel'
 import { DiceRoller } from '@/components/dice/DiceRoller'
 import api from '@/lib/api'
@@ -91,6 +93,20 @@ export default function RoomPage() {
   })
 
   const myChar = useGameStore((s) => s.characters.find((c) => c.user_id === user?.id) ?? null)
+
+  const editingTokenId = useGameStore((s) => s.editingTokenId)
+  const setEditingTokenId = useGameStore((s) => s.setEditingTokenId)
+  const editingToken = useGameStore((s) => s.tokens.find((t) => t.id === s.editingTokenId) ?? null)
+  const editingChar = useGameStore((s) => {
+    const token = s.tokens.find((t) => t.id === s.editingTokenId)
+    if (!token?.character_id) return null
+    return s.characters.find((c) => c.id === token.character_id) ?? null
+  })
+  const editingNpc = useGameStore((s) => {
+    const token = s.tokens.find((t) => t.id === s.editingTokenId)
+    if (!token?.npc_id) return null
+    return s.npcs.find((n) => n.id === token.npc_id) ?? null
+  })
 
   const [room, setRoom] = useState<RoomInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -256,6 +272,32 @@ export default function RoomPage() {
           character={myChar ?? undefined}
           onClose={() => setCharModalOpen(false)}
           onSaved={() => setCharModalOpen(false)}
+        />
+      )}
+
+      {editingTokenId && editingChar && (
+        <CharacterModal
+          roomCode={code}
+          character={editingChar}
+          onClose={() => setEditingTokenId(null)}
+          onSaved={() => setEditingTokenId(null)}
+        />
+      )}
+
+      {editingTokenId && editingNpc && (
+        <NpcModal
+          roomCode={code}
+          npc={editingNpc}
+          onClose={() => setEditingTokenId(null)}
+          onSaved={() => setEditingTokenId(null)}
+        />
+      )}
+
+      {editingTokenId && editingToken && !editingChar && !editingNpc && (
+        <TokenEditModal
+          token={editingToken}
+          sendMessage={sendMessage}
+          onClose={() => setEditingTokenId(null)}
         />
       )}
     </div>

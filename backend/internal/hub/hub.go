@@ -25,6 +25,7 @@ const (
 	EvTokenCreate    = "TOKEN_CREATE"
 	EvTokenMove      = "TOKEN_MOVE"
 	EvTokenUpdate    = "TOKEN_UPDATE"
+	EvTokenEdit      = "TOKEN_EDIT"
 	EvTokenDelete    = "TOKEN_DELETE"
 	EvDiceRoll       = "DICE_ROLL"
 	EvDiceRollResult = "DICE_ROLL_RESULT"
@@ -393,8 +394,28 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		}
 		h.broadcastToRoom(c.room, EvTokenUpdate, token)
 
+	case EvTokenEdit:
+		if c.role != "dm" {
+			return
+		}
+		var p struct {
+			ID          uuid.UUID `json:"id"`
+			Name        string    `json:"name"`
+			Disposition string    `json:"disposition"`
+			MaxHP       *int      `json:"max_hp"`
+			CurrentHP   *int      `json:"current_hp"`
+		}
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			return
+		}
+		token, err := h.store.UpdateToken(ctx, p.ID, p.Name, p.Disposition, p.MaxHP, p.CurrentHP)
+		if err != nil {
+			log.Printf("hub: edit token: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvTokenUpdate, token)
+
 	case EvCharUpdate:
-		// relay to all room members so HP / stat changes propagate in real time
 		h.broadcastToRoom(c.room, EvCharUpdate, msg.Payload)
 
 	case EvRulerUpdate:

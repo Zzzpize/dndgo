@@ -153,6 +153,16 @@ func (s *Store) UpdateTokenHP(ctx context.Context, tokenID uuid.UUID, currentHP 
 	return scanToken(row)
 }
 
+func (s *Store) UpdateToken(ctx context.Context, tokenID uuid.UUID, name, disposition string, maxHP, currentHP *int) (MapToken, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE map_tokens SET name = $2, disposition = $3, max_hp = $4, current_hp = $5
+		WHERE id = $1
+		RETURNING `+tokenCols,
+		tokenID, name, disposition, maxHP, currentHP,
+	)
+	return scanToken(row)
+}
+
 func (s *Store) DeleteToken(ctx context.Context, tokenID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM map_tokens WHERE id = $1`, tokenID)
 	return err

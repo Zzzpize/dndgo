@@ -118,6 +118,7 @@ interface GameStore {
   activeInitIndex: number
   selectedTokenId: string | null
   selectedCharId: string | null
+  editingTokenId: string | null
   rulerPos: { x1: number; y1: number; x2: number; y2: number } | null
   activeTool: 'pointer' | 'fog' | 'ruler'
 
@@ -148,6 +149,7 @@ interface GameStore {
   setMapImage: (url: string) => void
   setSelectedToken: (id: string | null) => void
   setSelectedChar: (id: string | null) => void
+  setEditingTokenId: (id: string | null) => void
   setRulerPos: (pos: { x1: number; y1: number; x2: number; y2: number } | null) => void
   reset: () => void
 }
@@ -164,6 +166,7 @@ const initialState = {
   activeInitIndex: 0,
   selectedTokenId: null as string | null,
   selectedCharId: null as string | null,
+  editingTokenId: null as string | null,
   rulerPos: null as { x1: number; y1: number; x2: number; y2: number } | null,
   activeTool: 'pointer' as 'pointer' | 'fog' | 'ruler',
 }
@@ -252,6 +255,7 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setSelectedToken: (id) => set({ selectedTokenId: id }),
   setSelectedChar: (id) => set({ selectedCharId: id }),
+  setEditingTokenId: (id) => set({ editingTokenId: id }),
   setRulerPos: (pos) => set({ rulerPos: pos }),
 
   reset: () => set(initialState),

@@ -6,6 +6,10 @@ const config: Config = {
     extend: {
       colors: {
         parchment: '#f4e4bc',
+        'token-friendly': '#4d7a38',
+        'token-neutral': '#a08832',
+        'token-hostile': '#8c2e28',
+        'token-pc': '#2a5c80',
         gold: '#a88c52',
         'gold-light': '#d4af70',
         dark: '#1a1814',

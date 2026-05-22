@@ -36,9 +36,9 @@ interface PoolEntry {
 }
 
 const DISP_DOT: Record<string, string> = {
-  friendly: 'text-gold',
-  neutral: 'text-[#c9b42e]',
-  hostile: 'text-ember',
+  friendly: 'text-token-friendly',
+  neutral: 'text-token-neutral',
+  hostile: 'text-token-hostile',
 }
 
 export function DMPanel({ sendMessage, roomCode }: Props) {
@@ -215,11 +215,14 @@ function QueueTab({
 
 function TokensTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
   const tokens = useGameStore((s) => s.tokens)
+  const selectedTokenId = useGameStore((s) => s.selectedTokenId)
+  const setSelectedToken = useGameStore((s) => s.setSelectedToken)
+  const setSelectedChar = useGameStore((s) => s.setSelectedChar)
 
   const DISP_COLOR: Record<string, string> = {
-    friendly: 'text-gold',
-    neutral: 'text-[#c9b42e]',
-    hostile: 'text-ember',
+    friendly: 'text-token-friendly',
+    neutral: 'text-token-neutral',
+    hostile: 'text-token-hostile',
   }
   const DISP_LABEL: Record<string, string> = {
     friendly: 'друг',
@@ -237,13 +240,21 @@ function TokensTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
         {tokens.map((t) => (
           <div
             key={t.id}
-            className="flex items-center gap-2 px-2 py-1.5 rounded bg-dark border border-dark-border/50 hover:border-dark-border"
+            onClick={() => {
+              setSelectedToken(t.id)
+              setSelectedChar(t.character_id ?? null)
+            }}
+            className={`flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer transition-colors ${
+              selectedTokenId === t.id
+                ? 'bg-gold/10 border-gold/40'
+                : 'bg-dark border-dark-border/50 hover:border-dark-border'
+            }`}
           >
-            <span className={`text-xs ${DISP_COLOR[t.disposition]}`}>●</span>
+            <span className={`text-xs ${t.token_type === 'pc' ? 'text-token-pc' : DISP_COLOR[t.disposition]}`}>●</span>
             <span className="flex-1 text-xs text-parchment truncate">{t.name}</span>
             <span className="text-parchment/30 text-xs">{DISP_LABEL[t.disposition]}</span>
             <button
-              onClick={() => sendMessage('TOKEN_DELETE', { id: t.id })}
+              onClick={(e) => { e.stopPropagation(); sendMessage('TOKEN_DELETE', { id: t.id }) }}
               className="text-ember/50 hover:text-ember text-xs w-5 h-5 flex items-center justify-center transition-colors"
             >
               ✕
@@ -847,7 +858,7 @@ function InitiativeTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
               className="bg-dark border border-dark-border/50 rounded p-2 flex flex-col gap-1.5"
             >
               <div className="flex items-center gap-1.5">
-                <span className={`text-xs shrink-0 ${e.character_id ? 'text-[#2471a3]' : DISP_DOT[e.disposition]}`}>●</span>
+                <span className={`text-xs shrink-0 ${e.character_id ? 'text-token-pc' : DISP_DOT[e.disposition]}`}>●</span>
                 <span className="flex-1 text-xs text-parchment truncate">{e.name}</span>
                 <button
                   onClick={() => setEntries((prev) => prev.filter((_, j) => j !== i))}
@@ -961,7 +972,7 @@ function InitiativeTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
         {order.map((e, i) => {
           const isActive = i === activeInitIndex % order.length
           const token = tokens.find((t) => t.id === e.token_id)
-          const dotColor = e.character_id ? 'text-[#2471a3]' : DISP_DOT[token?.disposition ?? 'hostile']
+          const dotColor = e.character_id ? 'text-token-pc' : DISP_DOT[token?.disposition ?? 'hostile']
           return (
             <div
               key={e.token_id}
@@ -996,7 +1007,7 @@ function InitiativeTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
               return (
                 <div key={t.id} className="flex flex-col rounded bg-dark border border-dark-border/30 overflow-hidden">
                   <div className="flex items-center gap-2 px-2 py-1.5">
-                    <span className={`text-xs shrink-0 ${t.character_id ? 'text-[#2471a3]' : DISP_DOT[t.disposition]}`}>●</span>
+                    <span className={`text-xs shrink-0 ${t.character_id ? 'text-token-pc' : DISP_DOT[t.disposition]}`}>●</span>
                     <span className="text-xs text-parchment/60 truncate flex-1">{t.name}</span>
                     {!isAdding && (
                       <button
@@ -1111,7 +1122,7 @@ function CharsTab({
             }}
             className="flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border group cursor-grab active:cursor-grabbing"
           >
-            <span className="text-xs shrink-0 text-gold">●</span>
+            <span className="text-xs shrink-0 text-token-pc">●</span>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-parchment truncate">{c.name}</p>
               <p className="text-parchment/30 text-xs truncate">

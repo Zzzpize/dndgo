@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  turbopack: {},
   webpack: (config) => {
     config.resolve.alias = { ...config.resolve.alias, canvas: false }
     return config
