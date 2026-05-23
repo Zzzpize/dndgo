@@ -24,6 +24,7 @@ const (
 const (
 	EvTokenCreate    = "TOKEN_CREATE"
 	EvTokenMove      = "TOKEN_MOVE"
+	EvTokenDrag      = "TOKEN_DRAG"
 	EvTokenUpdate    = "TOKEN_UPDATE"
 	EvTokenEdit      = "TOKEN_EDIT"
 	EvTokenDelete    = "TOKEN_DELETE"
@@ -32,6 +33,7 @@ const (
 	EvGridUpdate     = "GRID_UPDATE"
 	EvFogReveal      = "FOG_REVEAL"
 	EvFogClear       = "FOG_CLEAR"
+	EvFogFill        = "FOG_FILL"
 	EvInitUpdate     = "INIT_UPDATE"
 	EvInitNext       = "INIT_NEXT"
 	EvInitEnd        = "INIT_END"
@@ -242,6 +244,21 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		h.broadcastToRoom(c.room, EvTokenMove, token)
 		h.publish(ctx, c.userID, roomID, EvTokenMove, token)
 
+	case EvTokenDrag:
+		var p struct {
+			ID   uuid.UUID `json:"id"`
+			RelX float64   `json:"rel_x"`
+			RelY float64   `json:"rel_y"`
+		}
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			return
+		}
+		h.broadcastToRoomExcept(c.room, c, EvTokenDrag, map[string]any{
+			"id":    p.ID.String(),
+			"rel_x": p.RelX,
+			"rel_y": p.RelY,
+		})
+
 	case EvTokenDelete:
 		if c.role != "dm" {
 			return
@@ -284,45 +301,45 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		h.broadcastToRoom(c.room, EvGridUpdate, p)
 
 	case EvFogReveal:
-		if c.role != "dm" {
-			return
-		}
-		var newCells [][]int
-		if err := json.Unmarshal(msg.Payload, &newCells); err != nil {
+		var newPaths []store.FogPath
+		if err := json.Unmarshal(msg.Payload, &newPaths); err != nil {
 			return
 		}
 		gs, err := h.store.GetGameState(ctx, roomID)
 		if err != nil {
 			return
 		}
-		var existing [][]int
-		if len(gs.FogCells) > 0 {
-			json.Unmarshal(gs.FogCells, &existing) //nolint:errcheck
+		if gs.FogCleared {
+			return
 		}
-		// deduplicate by building a set
-		type cell struct{ x, y int }
-		seen := make(map[cell]struct{}, len(existing)+len(newCells))
-		for _, c := range existing {
-			if len(c) == 2 {
-				seen[cell{c[0], c[1]}] = struct{}{}
-			}
+		var existing []store.FogPath
+		if len(gs.FogPaths) > 0 {
+			json.Unmarshal(gs.FogPaths, &existing) //nolint:errcheck
 		}
-		for _, c := range newCells {
-			if len(c) == 2 {
-				seen[cell{c[0], c[1]}] = struct{}{}
-			}
-		}
-		merged := make([][]int, 0, len(seen))
-		for k := range seen {
-			merged = append(merged, []int{k.x, k.y})
-		}
+		merged := append(existing, newPaths...)
 		data, _ := json.Marshal(merged)
-		gs.FogCells = json.RawMessage(data)
+		gs.FogPaths = json.RawMessage(data)
 		if err := h.store.UpsertGameState(ctx, gs); err != nil {
 			log.Printf("hub: fog reveal: %v", err)
 			return
 		}
-		h.broadcastToRoom(c.room, EvFogReveal, merged)
+		h.broadcastToRoom(c.room, EvFogReveal, newPaths)
+
+	case EvFogFill:
+		if c.role != "dm" {
+			return
+		}
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			return
+		}
+		gs.FogPaths = json.RawMessage("[]")
+		gs.FogCleared = false
+		if err := h.store.UpsertGameState(ctx, gs); err != nil {
+			log.Printf("hub: fog fill: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvFogFill, nil)
 
 	case EvFogClear:
 		if c.role != "dm" {
@@ -332,12 +349,13 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		if err != nil {
 			return
 		}
-		gs.FogCells = json.RawMessage("[]")
+		gs.FogPaths = json.RawMessage("[]")
+		gs.FogCleared = true
 		if err := h.store.UpsertGameState(ctx, gs); err != nil {
 			log.Printf("hub: fog clear: %v", err)
 			return
 		}
-		h.broadcastToRoom(c.room, EvFogClear, [][]int{})
+		h.broadcastToRoom(c.room, EvFogClear, nil)
 
 	case EvInitUpdate:
 		if c.role != "dm" {
@@ -460,6 +478,28 @@ func (h *Hub) broadcastToRoom(r *Room, evType string, payload any) {
 		return
 	}
 	r.broadcast <- msg
+}
+
+func (h *Hub) broadcastToRoomExcept(r *Room, skip *Client, evType string, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	msg, err := json.Marshal(Message{Type: evType, Payload: json.RawMessage(data)})
+	if err != nil {
+		return
+	}
+	r.mu.RLock()
+	for c := range r.clients {
+		if c == skip {
+			continue
+		}
+		select {
+		case c.send <- msg:
+		default:
+		}
+	}
+	r.mu.RUnlock()
 }
 
 func (h *Hub) BroadcastToRoomByCode(code string, evType string, payload any) {

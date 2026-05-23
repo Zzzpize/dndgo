@@ -1,0 +1,1 @@
+ALTER TABLE game_state ADD COLUMN IF NOT EXISTS fog_cleared BOOL NOT NULL DEFAULT true;

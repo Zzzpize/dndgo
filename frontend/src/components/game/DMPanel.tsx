@@ -1262,6 +1262,24 @@ function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; 
           Применить сетку
         </button>
       </div>
+
+      <hr className="border-dark-border" />
+
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-fantasy text-parchment/50">Туман войны</p>
+        <button
+          onClick={() => sendMessage('FOG_FILL')}
+          className="w-full py-1.5 bg-dark hover:bg-dark-hover border border-dark-border rounded text-xs text-parchment/60 hover:text-parchment font-fantasy transition-colors"
+        >
+          Покрыть туманом
+        </button>
+        <button
+          onClick={() => sendMessage('FOG_CLEAR')}
+          className="w-full py-1.5 bg-ember/10 hover:bg-ember/20 border border-ember/30 rounded text-xs text-ember/70 hover:text-ember font-fantasy transition-colors"
+        >
+          Убрать весь туман
+        </button>
+      </div>
     </div>
   )
 }

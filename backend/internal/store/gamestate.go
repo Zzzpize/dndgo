@@ -8,12 +8,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type FogPath struct {
+	RelX   float64 `json:"rel_x"`
+	RelY   float64 `json:"rel_y"`
+	Radius float64 `json:"radius"`
+}
+
 type GameState struct {
 	RoomID          uuid.UUID       `json:"room_id"`
 	MapImageURL     string          `json:"map_image_url"`
+	MapAspect       float64         `json:"map_aspect"`
 	GridEnabled     bool            `json:"grid_enabled"`
 	GridSize        int             `json:"grid_size"`
-	FogCells        json.RawMessage `json:"fog_cells"`
+	FogPaths        json.RawMessage `json:"fog_paths"`
+	FogCleared      bool            `json:"fog_cleared"`
 	InitiativeOrder json.RawMessage `json:"initiative_order"`
 }
 
@@ -46,15 +54,17 @@ type TokenInput struct {
 func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, error) {
 	var gs GameState
 	err := s.pool.QueryRow(ctx, `
-		SELECT room_id, map_image_url, grid_enabled, grid_size, fog_cells, initiative_order
+		SELECT room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order
 		FROM game_state WHERE room_id = $1`, roomID,
-	).Scan(&gs.RoomID, &gs.MapImageURL, &gs.GridEnabled, &gs.GridSize, &gs.FogCells, &gs.InitiativeOrder)
+	).Scan(&gs.RoomID, &gs.MapImageURL, &gs.MapAspect, &gs.GridEnabled, &gs.GridSize, &gs.FogPaths, &gs.FogCleared, &gs.InitiativeOrder)
 	if err == pgx.ErrNoRows {
 		return GameState{
 			RoomID:          roomID,
+			MapAspect:       1,
 			GridEnabled:     true,
 			GridSize:        50,
-			FogCells:        json.RawMessage("[]"),
+			FogPaths:        json.RawMessage("[]"),
+			FogCleared:      true,
 			InitiativeOrder: json.RawMessage("[]"),
 		}, nil
 	}
@@ -63,29 +73,34 @@ func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, 
 
 func (s *Store) UpsertGameState(ctx context.Context, gs GameState) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO game_state (room_id, map_image_url, grid_enabled, grid_size, fog_cells, initiative_order, updated_at)
-		VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, NOW())
+		INSERT INTO game_state (room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, NOW())
 		ON CONFLICT (room_id) DO UPDATE SET
 			map_image_url    = EXCLUDED.map_image_url,
+			map_aspect       = EXCLUDED.map_aspect,
 			grid_enabled     = EXCLUDED.grid_enabled,
 			grid_size        = EXCLUDED.grid_size,
 			fog_cells        = EXCLUDED.fog_cells,
+			fog_cleared      = EXCLUDED.fog_cleared,
 			initiative_order = EXCLUDED.initiative_order,
 			updated_at       = NOW()`,
-		gs.RoomID, gs.MapImageURL, gs.GridEnabled, gs.GridSize,
-		string(gs.FogCells), string(gs.InitiativeOrder),
+		gs.RoomID, gs.MapImageURL, gs.MapAspect, gs.GridEnabled, gs.GridSize,
+		string(gs.FogPaths), gs.FogCleared, string(gs.InitiativeOrder),
 	)
 	return err
 }
 
-func (s *Store) UpdateMapImageURL(ctx context.Context, roomID uuid.UUID, url string) error {
+func (s *Store) UpdateMapImageURL(ctx context.Context, roomID uuid.UUID, url string, aspect float64) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO game_state (room_id, map_image_url, grid_enabled, grid_size, fog_cells, initiative_order, updated_at)
-		VALUES ($1, $2, true, 50, '[]'::jsonb, '[]'::jsonb, NOW())
+		INSERT INTO game_state (room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order, updated_at)
+		VALUES ($1, $2, $3, true, 50, '[]'::jsonb, false, '[]'::jsonb, NOW())
 		ON CONFLICT (room_id) DO UPDATE SET
 			map_image_url = EXCLUDED.map_image_url,
+			map_aspect    = EXCLUDED.map_aspect,
+			fog_cells     = '[]'::jsonb,
+			fog_cleared   = false,
 			updated_at    = NOW()`,
-		roomID, url,
+		roomID, url, aspect,
 	)
 	return err
 }

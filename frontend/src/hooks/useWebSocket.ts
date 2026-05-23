@@ -89,6 +89,11 @@ function dispatch(msg: WsMsg) {
     case 'TOKEN_UPDATE':
       s.updateToken(msg.payload as Parameters<typeof s.updateToken>[0])
       break
+    case 'TOKEN_DRAG': {
+      const p = msg.payload as { id: string; rel_x: number; rel_y: number }
+      s.moveToken(p.id, p.rel_x, p.rel_y)
+      break
+    }
     case 'TOKEN_DELETE':
       s.removeToken((msg.payload as { id: string }).id)
       break
@@ -101,8 +106,13 @@ function dispatch(msg: WsMsg) {
       break
     }
     case 'FOG_REVEAL':
+      s.addFogPaths(msg.payload as Parameters<typeof s.addFogPaths>[0])
+      break
     case 'FOG_CLEAR':
-      s.setFogCells(msg.payload as number[][])
+      s.setFogState(true, [])
+      break
+    case 'FOG_FILL':
+      s.setFogState(false, [])
       break
     case 'INIT_UPDATE':
       s.setInitiativeOrder(msg.payload as Parameters<typeof s.setInitiativeOrder>[0])
@@ -116,9 +126,11 @@ function dispatch(msg: WsMsg) {
     case 'RULER_UPDATE':
       s.setRulerPos(msg.payload as Parameters<typeof s.setRulerPos>[0])
       break
-    case 'MAP_UPDATE':
-      s.setMapImage((msg.payload as { map_image_url: string }).map_image_url)
+    case 'MAP_UPDATE': {
+      const p = msg.payload as { map_image_url: string; map_aspect?: number }
+      s.setMapImage(p.map_image_url, p.map_aspect)
       break
+    }
     case 'CHARACTER_UPDATE':
       s.updateCharacter(msg.payload as Parameters<typeof s.updateCharacter>[0])
       break

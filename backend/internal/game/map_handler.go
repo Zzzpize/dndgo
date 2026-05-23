@@ -3,11 +3,16 @@ package game
 import (
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	_ "golang.org/x/image/webp"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -85,16 +90,31 @@ func (h *Handler) UploadMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	aspect := 1.0
+	if f, err := os.Open(dst); err == nil {
+		if cfg, _, err := image.DecodeConfig(f); err == nil && cfg.Height > 0 {
+			aspect = float64(cfg.Width) / float64(cfg.Height)
+		}
+		f.Close()
+	}
+
 	mapURL := fmt.Sprintf("%s/static/maps/%s/%s", h.publicURL, code, filename)
 
-	if err := h.store.UpdateMapImageURL(r.Context(), room.ID, mapURL); err != nil {
+	if err := h.store.UpdateMapImageURL(r.Context(), room.ID, mapURL, aspect); err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
 		return
 	}
 
 	if h.broadcaster != nil {
-		h.broadcaster.BroadcastToRoomByCode(code, "MAP_UPDATE", map[string]string{"map_image_url": mapURL})
+		h.broadcaster.BroadcastToRoomByCode(code, "FOG_FILL", nil)
 	}
 
-	httputil.JSON(w, http.StatusOK, map[string]string{"map_image_url": mapURL})
+	if h.broadcaster != nil {
+		h.broadcaster.BroadcastToRoomByCode(code, "MAP_UPDATE", map[string]any{
+			"map_image_url": mapURL,
+			"map_aspect":    aspect,
+		})
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]any{"map_image_url": mapURL, "map_aspect": aspect})
 }

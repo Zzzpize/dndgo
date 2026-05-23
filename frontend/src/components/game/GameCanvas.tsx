@@ -13,7 +13,6 @@ interface Props {
 
 
 const WORLD_W = 1000
-const WORLD_H = 1000
 
 const DISPOSITION_COLOR: Record<string, string> = {
   friendly: '#4d7a38',
@@ -38,6 +37,9 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
   const isPaintingRef = useRef(false)
   const rulerStartRef = useRef<{ x: number; y: number } | null>(null)
   const lastFogCellRef = useRef<string>('')
+  const lastDragSendRef = useRef(0)
+  const isDraggingRef = useRef(false)
+  const worldHRef = useRef(WORLD_W)
 
   const myUserId = useAuthStore((s) => s.user?.id)
   const tokens = useGameStore((s) => s.tokens)
@@ -51,6 +53,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
 
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   useEffect(() => { sendMessageRef.current = sendMessage }, [sendMessage])
+  useEffect(() => { worldHRef.current = WORLD_W / Math.max(gameState?.map_aspect ?? 1, 0.01) }, [gameState?.map_aspect])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -80,16 +83,16 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
   const revealFogAtPointer = useCallback((stage: Konva.Stage) => {
     const wp = getWorldPos(stage)
     if (!wp) return
-    const gridSize = useGameStore.getState().gameState?.grid_size ?? 50
-    const cx = Math.floor(wp.x / gridSize)
-    const cy = Math.floor(wp.y / gridSize)
-    if (cx < 0 || cy < 0) return
-    const key = `${cx},${cy}`
+    const gs = useGameStore.getState().gameState
+    if (gs?.fog_cleared) return
+    const gridSize = gs?.grid_size ?? 50
+    const rel_x = wp.x / WORLD_W
+    const rel_y = wp.y / worldHRef.current
+    if (rel_x < 0 || rel_y < 0 || rel_x > 1 || rel_y > 1) return
+    const key = `${Math.round(wp.x / (gridSize * 0.5))},${Math.round(wp.y / (gridSize * 0.5))}`
     if (lastFogCellRef.current === key) return
     lastFogCellRef.current = key
-    const existing = useGameStore.getState().gameState?.fog_cells ?? []
-    if (existing.some(([x, y]: number[]) => x === cx && y === cy)) return
-    sendMessageRef.current('FOG_REVEAL', [[cx, cy]])
+    sendMessageRef.current('FOG_REVEAL', [{ rel_x, rel_y, radius: gridSize * 1.5 }])
   }, [])
 
   useEffect(() => {
@@ -150,8 +153,8 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         if (!wp) return
         rulerStartRef.current = wp
         sendMessageRef.current('RULER_UPDATE', {
-          x1: wp.x / WORLD_W, y1: wp.y / WORLD_H,
-          x2: wp.x / WORLD_W, y2: wp.y / WORLD_H,
+          x1: wp.x / WORLD_W, y1: wp.y / worldHRef.current,
+          x2: wp.x / WORLD_W, y2: wp.y / worldHRef.current,
         })
       }
     })
@@ -166,8 +169,8 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         if (!wp) return
         const s = rulerStartRef.current
         sendMessageRef.current('RULER_UPDATE', {
-          x1: s.x / WORLD_W, y1: s.y / WORLD_H,
-          x2: wp.x / WORLD_W, y2: wp.y / WORLD_H,
+          x1: s.x / WORLD_W, y1: s.y / worldHRef.current,
+          x2: wp.x / WORLD_W, y2: wp.y / worldHRef.current,
         })
       }
     })
@@ -219,12 +222,12 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     if (mapUrl) {
       Konva.Image.fromURL(mapUrl, (img) => {
         if (cancelled) return
-        img.setAttrs({ width: WORLD_W, height: WORLD_H })
+        img.setAttrs({ width: WORLD_W, height: worldHRef.current })
         layer.add(img)
         layer.batchDraw()
       })
     } else {
-      layer.add(new Konva.Rect({ width: WORLD_W, height: WORLD_H, fill: '#1a1814' }))
+      layer.add(new Konva.Rect({ width: WORLD_W, height: worldHRef.current, fill: '#1a1814' }))
       layer.batchDraw()
     }
     return () => { cancelled = true }
@@ -237,35 +240,43 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const gridSize = gameState?.grid_size ?? 50
     if (gameState?.grid_enabled && gridSize > 0) {
       for (let x = 0; x <= WORLD_W; x += gridSize) {
-        layer.add(new Konva.Line({ points: [x, 0, x, WORLD_H], stroke: 'rgba(74,67,56,0.4)', strokeWidth: 0.5 }))
+        layer.add(new Konva.Line({ points: [x, 0, x, worldHRef.current], stroke: 'rgba(74,67,56,0.4)', strokeWidth: 0.5 }))
       }
-      for (let y = 0; y <= WORLD_H; y += gridSize) {
+      for (let y = 0; y <= worldHRef.current; y += gridSize) {
         layer.add(new Konva.Line({ points: [0, y, WORLD_W, y], stroke: 'rgba(74,67,56,0.4)', strokeWidth: 0.5 }))
       }
     }
     layer.batchDraw()
-  }, [gameState?.grid_size, gameState?.grid_enabled])
+  }, [gameState?.grid_size, gameState?.grid_enabled, gameState?.map_aspect])
 
   useEffect(() => {
     const layer = layersRef.current?.fog
     if (!layer) return
     layer.destroyChildren()
-    const fogCells = gameState?.fog_cells ?? []
-    const gridSize = gameState?.grid_size ?? 50
+
+    if (gameState?.fog_cleared ?? true) {
+      layer.batchDraw()
+      return
+    }
+
     const fogOpacity = role === 'dm' ? 0.45 : 0.92
-    for (const cell of fogCells) {
-      layer.add(new Konva.Rect({
-        x: (cell[0] ?? 0) * gridSize,
-        y: (cell[1] ?? 0) * gridSize,
-        width: gridSize,
-        height: gridSize,
-        fill: `rgba(0,0,0,${fogOpacity})`,
+    layer.opacity(fogOpacity)
+    layer.add(new Konva.Rect({ x: 0, y: 0, width: WORLD_W, height: worldHRef.current, fill: 'black' }))
+
+    for (const path of (gameState?.fog_paths ?? [])) {
+      layer.add(new Konva.Circle({
+        x: path.rel_x * WORLD_W,
+        y: path.rel_y * worldHRef.current,
+        radius: path.radius,
+        fill: 'black',
+        globalCompositeOperation: 'destination-out',
       }))
     }
     layer.batchDraw()
-  }, [gameState?.fog_cells, gameState?.grid_size, role])
+  }, [gameState?.fog_paths, gameState?.fog_cleared, gameState?.map_aspect, role])
 
   useEffect(() => {
+    if (isDraggingRef.current) return
     const layer = layersRef.current?.tokens
     if (!layer) return
     layer.destroyChildren()
@@ -278,7 +289,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     for (const token of tokens) {
       const char = token.character_id ? charMap.get(token.character_id) : undefined
       const x = token.rel_x * WORLD_W
-      const y = token.rel_y * WORLD_H
+      const y = token.rel_y * worldHRef.current
       const activeEntry = initiativeOrder[activeInitIndex % Math.max(initiativeOrder.length, 1)]
       const isActive = initiativeOrder.length > 0 && !!activeEntry?.token_id && activeEntry.token_id === token.id
       const isSelected = token.id === selectedTokenId
@@ -332,22 +343,48 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
 
       group.on('dragstart', () => {
         stageRef.current?.draggable(false)
+        lastDragSendRef.current = 0
+        isDraggingRef.current = true
+      })
+
+      group.on('dragmove', () => {
+        const now = Date.now()
+        if (now - lastDragSendRef.current < 50) return
+        lastDragSendRef.current = now
+        const nx = Math.max(0, Math.min(1, group.x() / WORLD_W))
+        const ny = Math.max(0, Math.min(1, group.y() / worldHRef.current))
+        sendMessageRef.current('TOKEN_DRAG', { id: token.id, rel_x: nx, rel_y: ny })
+        if (token.token_type === 'pc') {
+          const s = useGameStore.getState()
+          if (!s.gameState?.fog_cleared) {
+            const gridSize = s.gameState?.grid_size ?? 50
+            sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gridSize / 5) * 30 }])
+          }
+        }
       })
 
       group.on('dragend', (e) => {
+        isDraggingRef.current = false
         if (activeToolRef.current === 'pointer') {
           stageRef.current?.draggable(true)
         }
         const nx = Math.max(0, Math.min(1, e.target.x() / WORLD_W))
-        const ny = Math.max(0, Math.min(1, e.target.y() / WORLD_H))
+        const ny = Math.max(0, Math.min(1, e.target.y() / worldHRef.current))
         sendMessageRef.current('TOKEN_MOVE', { id: token.id, rel_x: nx, rel_y: ny })
-        e.target.position({ x: nx * WORLD_W, y: ny * WORLD_H })
+        e.target.position({ x: nx * WORLD_W, y: ny * worldHRef.current })
+
+        if (token.token_type === 'pc') {
+          const s = useGameStore.getState()
+          if (s.gameState?.fog_cleared) return
+          const gridSize = s.gameState?.grid_size ?? 50
+          sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gridSize / 5) * 30 }])
+        }
       })
 
       layer.add(group)
     }
     layer.batchDraw()
-  }, [tokens, characters, gameState, activeInitIndex, selectedTokenId, role, myUserId])
+  }, [tokens, characters, gameState?.grid_size, gameState?.initiative_order, gameState?.map_aspect, activeInitIndex, selectedTokenId, role, myUserId])
 
   useEffect(() => {
     const layer = layersRef.current?.ruler
@@ -355,9 +392,9 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     layer.destroyChildren()
     if (rulerPos) {
       const x1 = rulerPos.x1 * WORLD_W
-      const y1 = rulerPos.y1 * WORLD_H
+      const y1 = rulerPos.y1 * worldHRef.current
       const x2 = rulerPos.x2 * WORLD_W
-      const y2 = rulerPos.y2 * WORLD_H
+      const y2 = rulerPos.y2 * worldHRef.current
       const dx = x2 - x1
       const dy = y2 - y1
       const gridSize = useGameStore.getState().gameState?.grid_size ?? 50
@@ -399,7 +436,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const tokenRadius = Math.max(14, Math.min(gridSize * 0.4, 28))
     for (const token of s.tokens) {
       const tx = token.rel_x * WORLD_W
-      const ty = token.rel_y * WORLD_H
+      const ty = token.rel_y * worldHRef.current
       const dist = Math.sqrt((worldX - tx) ** 2 + (worldY - ty) ** 2)
       if (dist <= tokenRadius + 4) {
         const char = s.characters.find((c) => c.id === token.character_id)
@@ -436,7 +473,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const worldX = (px - pos.x) / scale
     const worldY = (py - pos.y) / scale
     const relX = Math.max(0, Math.min(1, worldX / WORLD_W))
-    const relY = Math.max(0, Math.min(1, worldY / WORLD_H))
+    const relY = Math.max(0, Math.min(1, worldY / worldHRef.current))
 
     let npcId: string | undefined = data.npc_id as string | undefined
     let maxHp: number | undefined = data.max_hp as number | undefined

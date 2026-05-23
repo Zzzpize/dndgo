@@ -49,12 +49,20 @@ export interface InitiativeEntry {
   dex_mod?: number
 }
 
+export interface FogPath {
+  rel_x: number
+  rel_y: number
+  radius: number
+}
+
 export interface GameStateData {
   room_id: string
   map_image_url: string
+  map_aspect: number
   grid_enabled: boolean
   grid_size: number
-  fog_cells: number[][]
+  fog_paths: FogPath[]
+  fog_cleared: boolean
   initiative_order: InitiativeEntry[]
 }
 
@@ -139,14 +147,16 @@ interface GameStore {
   applyFullState: (gs: GameStateData, tokens: MapToken[]) => void
   addToken: (t: MapToken) => void
   updateToken: (t: MapToken) => void
+  moveToken: (id: string, rel_x: number, rel_y: number) => void
   removeToken: (id: string) => void
   setGrid: (enabled: boolean, size: number) => void
-  setFogCells: (cells: number[][]) => void
+  setFogState: (fogCleared: boolean, paths: FogPath[]) => void
+  addFogPaths: (paths: FogPath[]) => void
   setInitiativeOrder: (order: InitiativeEntry[]) => void
   nextInitiative: () => void
   endInitiative: () => void
   addDiceLog: (entry: Omit<DiceLogEntry, 'id' | 'timestamp'>) => void
-  setMapImage: (url: string) => void
+  setMapImage: (url: string, aspect?: number) => void
   setSelectedToken: (id: string | null) => void
   setSelectedChar: (id: string | null) => void
   setEditingTokenId: (id: string | null) => void
@@ -199,7 +209,8 @@ export const useGameStore = create<GameStore>((set) => ({
   applyFullState: (gs, tokens) => {
     const parsed: GameStateData = {
       ...gs,
-      fog_cells: Array.isArray(gs.fog_cells) ? gs.fog_cells : [],
+      fog_paths: Array.isArray(gs.fog_paths) ? gs.fog_paths : [],
+      fog_cleared: gs.fog_cleared ?? true,
       initiative_order: Array.isArray(gs.initiative_order) ? gs.initiative_order : [],
     }
     set({ gameState: parsed, tokens, activeInitIndex: 0 })
@@ -210,6 +221,8 @@ export const useGameStore = create<GameStore>((set) => ({
   })),
   updateToken: (t) =>
     set((s) => ({ tokens: s.tokens.map((tok) => (tok.id === t.id ? t : tok)) })),
+  moveToken: (id, rel_x, rel_y) =>
+    set((s) => ({ tokens: s.tokens.map((tok) => tok.id === id ? { ...tok, rel_x, rel_y } : tok) })),
   removeToken: (id) => set((s) => ({ tokens: s.tokens.filter((t) => t.id !== id) })),
 
   setGrid: (enabled, size) =>
@@ -217,9 +230,18 @@ export const useGameStore = create<GameStore>((set) => ({
       gameState: s.gameState ? { ...s.gameState, grid_enabled: enabled, grid_size: size } : s.gameState,
     })),
 
-  setFogCells: (cells) =>
+  setFogState: (fogCleared, paths) =>
     set((s) => ({
-      gameState: s.gameState ? { ...s.gameState, fog_cells: cells } : s.gameState,
+      gameState: s.gameState
+        ? { ...s.gameState, fog_cleared: fogCleared, fog_paths: paths }
+        : s.gameState,
+    })),
+
+  addFogPaths: (paths) =>
+    set((s) => ({
+      gameState: s.gameState
+        ? { ...s.gameState, fog_paths: [...(s.gameState.fog_paths ?? []), ...paths] }
+        : s.gameState,
     })),
 
   setInitiativeOrder: (order) =>
@@ -248,9 +270,11 @@ export const useGameStore = create<GameStore>((set) => ({
       ].slice(0, 20),
     })),
 
-  setMapImage: (url) =>
+  setMapImage: (url, aspect) =>
     set((s) => ({
-      gameState: s.gameState ? { ...s.gameState, map_image_url: url } : s.gameState,
+      gameState: s.gameState
+        ? { ...s.gameState, map_image_url: url, ...(aspect !== undefined ? { map_aspect: aspect } : {}) }
+        : s.gameState,
     })),
 
   setSelectedToken: (id) => set({ selectedTokenId: id }),
