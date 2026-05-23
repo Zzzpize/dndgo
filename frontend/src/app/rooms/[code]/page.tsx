@@ -221,7 +221,6 @@ export default function RoomPage() {
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 relative overflow-hidden">
             <GameCanvas sendMessage={sendMessage} roomCode={code} />
-            <DiceLogOverlay />
             {role === 'dm' && <ToolBar />}
           </div>
           <DiceRoller sendMessage={sendMessage} />
@@ -304,36 +303,3 @@ export default function RoomPage() {
   )
 }
 
-function DiceLogOverlay() {
-  const diceLogs = useGameStore((s) => s.diceLogs)
-  const characters = useGameStore((s) => s.characters)
-  const visible = diceLogs.slice(0, 5)
-
-  if (diceLogs.length === 0) return null
-
-  return (
-    <div className="absolute bottom-3 left-3 flex flex-col gap-1.5 pointer-events-none max-w-xs">
-      {diceLogs.map((log) => {
-        const char = characters.find((c) => c.user_id === log.user_id)
-        const name = char?.name ?? 'Игрок'
-        return (
-          <div
-            key={log.id}
-            className="bg-dark-card/90 border border-dark-border px-3 py-2 rounded animate-fade-in backdrop-blur-sm"
-          >
-            <span className="text-gold-light font-fantasy text-xs">{name}</span>
-            <span className="text-parchment/50 mx-1 text-xs">→</span>
-            <span className="text-parchment text-sm font-semibold">{log.notation}</span>
-            <span className="text-parchment/50 mx-1 text-xs">=</span>
-            <span className="text-gold-light font-bold">{log.total}</span>
-            {log.rolls.length > 1 && (
-              <span className="text-parchment/30 text-xs ml-1">
-                [{log.rolls.join(', ')}]
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}

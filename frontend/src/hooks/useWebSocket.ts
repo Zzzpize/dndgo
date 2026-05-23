@@ -100,6 +100,9 @@ function dispatch(msg: WsMsg) {
     case 'DICE_ROLL_RESULT':
       s.addDiceLog(msg.payload as Parameters<typeof s.addDiceLog>[0])
       break
+    case 'DICE_LOG_CLEAR':
+      s.clearDiceLogs()
+      break
     case 'GRID_UPDATE': {
       const p = msg.payload as { grid_enabled: boolean; grid_size: number }
       s.setGrid(p.grid_enabled, p.grid_size)

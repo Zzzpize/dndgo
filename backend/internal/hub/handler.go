@@ -61,10 +61,11 @@ func (h *Hub) ServeWS(secret string) http.HandlerFunc {
 		}
 
 		client := &Client{
-			conn:   conn,
-			send:   make(chan []byte, 256),
-			userID: userID,
-			role:   role,
+			conn:     conn,
+			send:     make(chan []byte, 256),
+			userID:   userID,
+			username: claims.Username,
+			role:     role,
 		}
 
 		h.AddClient(client, code)

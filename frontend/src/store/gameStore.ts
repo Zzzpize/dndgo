@@ -69,6 +69,8 @@ export interface GameStateData {
 export interface DiceLogEntry {
   id: string
   user_id: string
+  username: string
+  role: 'dm' | 'player'
   notation: string
   rolls: number[]
   total: number
@@ -156,6 +158,7 @@ interface GameStore {
   nextInitiative: () => void
   endInitiative: () => void
   addDiceLog: (entry: Omit<DiceLogEntry, 'id' | 'timestamp'>) => void
+  clearDiceLogs: () => void
   setMapImage: (url: string, aspect?: number) => void
   setSelectedToken: (id: string | null) => void
   setSelectedChar: (id: string | null) => void
@@ -269,6 +272,8 @@ export const useGameStore = create<GameStore>((set) => ({
         ...s.diceLogs,
       ].slice(0, 20),
     })),
+
+  clearDiceLogs: () => set({ diceLogs: [] }),
 
   setMapImage: (url, aspect) =>
     set((s) => ({

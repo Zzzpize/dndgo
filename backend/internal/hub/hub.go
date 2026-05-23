@@ -30,6 +30,7 @@ const (
 	EvTokenDelete    = "TOKEN_DELETE"
 	EvDiceRoll       = "DICE_ROLL"
 	EvDiceRollResult = "DICE_ROLL_RESULT"
+	EvDiceLogClear   = "DICE_LOG_CLEAR"
 	EvGridUpdate     = "GRID_UPDATE"
 	EvFogReveal      = "FOG_REVEAL"
 	EvFogClear       = "FOG_CLEAR"
@@ -49,11 +50,12 @@ type Message struct {
 }
 
 type Client struct {
-	conn   *websocket.Conn
-	send   chan []byte
-	userID uuid.UUID
-	role   string
-	room   *Room
+	conn     *websocket.Conn
+	send     chan []byte
+	userID   uuid.UUID
+	username string
+	role     string
+	room     *Room
 }
 
 type Room struct {
@@ -204,6 +206,12 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 	switch msg.Type {
 	case EvDiceRoll:
 		h.handleDiceRoll(ctx, c, roomID, msg.Payload)
+
+	case EvDiceLogClear:
+		if c.role != "dm" {
+			return
+		}
+		h.broadcastToRoom(c.room, EvDiceLogClear, nil)
 
 	case EvTokenCreate:
 		if c.role != "dm" {
@@ -460,6 +468,8 @@ func (h *Hub) handleDiceRoll(ctx context.Context, c *Client, roomID uuid.UUID, p
 	total, rolls := rollDice(p.Notation)
 	result := map[string]any{
 		"user_id":  c.userID.String(),
+		"username": c.username,
+		"role":     c.role,
 		"notation": p.Notation,
 		"rolls":    rolls,
 		"total":    total,
