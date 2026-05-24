@@ -186,6 +186,11 @@ func (s *Store) DeleteToken(ctx context.Context, tokenID uuid.UUID) error {
 	return err
 }
 
+func (s *Store) DeleteAllTokensByRoom(ctx context.Context, roomID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM map_tokens WHERE room_id = $1`, roomID)
+	return err
+}
+
 func (s *Store) GetTokenByID(ctx context.Context, tokenID uuid.UUID) (MapToken, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT `+tokenCols+` FROM map_tokens WHERE id = $1`, tokenID)

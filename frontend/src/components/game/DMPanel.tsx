@@ -1297,6 +1297,24 @@ function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; 
           Убрать весь туман
         </button>
       </div>
+
+      <hr className="border-dark-border" />
+
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-fantasy text-parchment/50">Сброс</p>
+        <button
+          onClick={() => { if (window.confirm('Убрать карту? Токены останутся.')) sendMessage('MAP_CLEAR') }}
+          className="w-full py-1.5 bg-dark hover:bg-dark-hover border border-dark-border rounded text-xs text-parchment/60 hover:text-parchment font-fantasy transition-colors"
+        >
+          Убрать карту
+        </button>
+        <button
+          onClick={() => { if (window.confirm('Очистить сессию? Будут удалены все токены, карта и инициатива.')) sendMessage('SESSION_CLEAR') }}
+          className="w-full py-1.5 bg-ember/10 hover:bg-ember/20 border border-ember/30 rounded text-xs text-ember/70 hover:text-ember font-fantasy transition-colors"
+        >
+          Очистить сессию
+        </button>
+      </div>
     </div>
   )
 }

@@ -43,6 +43,8 @@ const (
 	EvFullState      = "FULL_STATE_UPDATE"
 	EvMapUpdate      = "MAP_UPDATE"
 	EvCharUpdate     = "CHARACTER_UPDATE"
+	EvMapClear       = "MAP_CLEAR"
+	EvSessionClear   = "SESSION_CLEAR"
 )
 
 type Message struct {
@@ -484,6 +486,48 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		}
 		h.broadcastToRoom(c.room, EvMapUpdate, msg.Payload)
 		h.publish(ctx, c.userID, roomID, EvMapUpdate, msg.Payload)
+
+	case EvMapClear:
+		if c.role != "dm" {
+			return
+		}
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			log.Printf("hub: map clear: get state: %v", err)
+			return
+		}
+		gs.MapImageURL = ""
+		gs.FogPaths = json.RawMessage("[]")
+		gs.FogCleared = true
+		if err := h.store.UpsertGameState(ctx, gs); err != nil {
+			log.Printf("hub: map clear: upsert: %v", err)
+			return
+		}
+		tokens, _ := h.store.GetTokensByRoom(ctx, roomID)
+		h.broadcastToRoom(c.room, EvFullState, map[string]any{"game_state": gs, "tokens": tokens})
+
+	case EvSessionClear:
+		if c.role != "dm" {
+			return
+		}
+		if err := h.store.DeleteAllTokensByRoom(ctx, roomID); err != nil {
+			log.Printf("hub: session clear: delete tokens: %v", err)
+			return
+		}
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			log.Printf("hub: session clear: get state: %v", err)
+			return
+		}
+		gs.MapImageURL = ""
+		gs.FogPaths = json.RawMessage("[]")
+		gs.FogCleared = true
+		gs.InitiativeOrder = json.RawMessage("[]")
+		if err := h.store.UpsertGameState(ctx, gs); err != nil {
+			log.Printf("hub: session clear: upsert: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvFullState, map[string]any{"game_state": gs, "tokens": []struct{}{}})
 	}
 }
 
