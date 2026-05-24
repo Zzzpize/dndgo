@@ -16,7 +16,25 @@ interface NpcForm {
   speed: string
   type_alignment: string
   abilities: AbilityScores
+
+  features: string
+  saving_throws: string
+  skills: string
+  damage_immunities: string
+  condition_immunities: string
+  damage_resistances: string
+  damage_vulnerabilities: string
+  senses: string
+  languages: string
+  challenge: string
+
   actionsText: string
+  bonusActionsText: string
+  reactionsText: string
+  legendaryActionsText: string
+  lairActionsText: string
+  regionalEffectsText: string
+  mythicActionsText: string
 }
 
 const defaultForm = (): NpcForm => ({
@@ -27,26 +45,63 @@ const defaultForm = (): NpcForm => ({
   speed: '30 фт.',
   type_alignment: '',
   abilities: defaultAbilities(),
+  features: '',
+  saving_throws: '',
+  skills: '',
+  damage_immunities: '',
+  condition_immunities: '',
+  damage_resistances: '',
+  damage_vulnerabilities: '',
+  senses: '',
+  languages: '',
+  challenge: '',
   actionsText: '',
+  bonusActionsText: '',
+  reactionsText: '',
+  legendaryActionsText: '',
+  lairActionsText: '',
+  regionalEffectsText: '',
+  mythicActionsText: '',
 })
 
-const fromNPC = (n: NPC): NpcForm => ({
-  name: n.name,
-  disposition: n.disposition,
-  ac: n.ac,
-  max_hp: String(n.max_hp),
-  speed: n.speed,
-  type_alignment: n.type_alignment,
-  abilities: {
-    str: String(n.abilities?.str ?? 10),
-    dex: String(n.abilities?.dex ?? 10),
-    con: String(n.abilities?.con ?? 10),
-    int: String(n.abilities?.int ?? 10),
-    wis: String(n.abilities?.wis ?? 10),
-    cha: String(n.abilities?.cha ?? 10),
-  },
-  actionsText: Array.isArray(n.actions) ? n.actions.join('\n') : '',
-})
+const fromNPC = (n: NPC): NpcForm => {
+  const misc = n.misc ?? {}
+  return {
+    name: n.name,
+    disposition: n.disposition,
+    ac: n.ac,
+    max_hp: String(n.max_hp),
+    speed: n.speed,
+    type_alignment: n.type_alignment,
+    abilities: {
+      str: String(n.abilities?.str ?? 10),
+      dex: String(n.abilities?.dex ?? 10),
+      con: String(n.abilities?.con ?? 10),
+      int: String(n.abilities?.int ?? 10),
+      wis: String(n.abilities?.wis ?? 10),
+      cha: String(n.abilities?.cha ?? 10),
+    },
+    features:               misc['Особенности'] ?? '',
+    saving_throws:          misc['Спасброски'] ?? '',
+    skills:                 misc['Навыки'] ?? '',
+    damage_immunities:      misc['Иммунитет к урону'] ?? '',
+    condition_immunities:   misc['Иммунитет к состоянию'] ?? '',
+    damage_resistances:     misc['Сопротивление урону'] ?? '',
+    damage_vulnerabilities: misc['Уязвимость к урону'] ?? '',
+    senses:                 misc['Чувства'] ?? '',
+    languages:              misc['Языки'] ?? '',
+    challenge:              misc['Опасность'] ?? '',
+    actionsText:            Array.isArray(n.actions)           ? n.actions.join('\n')            : '',
+    bonusActionsText:       Array.isArray(n.bonus_actions)     ? n.bonus_actions.join('\n')      : '',
+    reactionsText:          Array.isArray(n.reactions)         ? n.reactions.join('\n')          : '',
+    legendaryActionsText:   Array.isArray(n.legendary_actions) ? n.legendary_actions.join('\n')  : '',
+    lairActionsText:        Array.isArray(n.lair_actions)      ? n.lair_actions.join('\n')       : '',
+    regionalEffectsText:    Array.isArray(n.regional_effects)  ? n.regional_effects.join('\n')   : '',
+    mythicActionsText:      Array.isArray(n.mythic_actions)    ? n.mythic_actions.join('\n')     : '',
+  }
+}
+
+const toLines = (text: string) => text.split('\n').map((s) => s.trim()).filter(Boolean)
 
 const modStr = (raw: string | number) => {
   const n = typeof raw === 'string' ? parseInt(raw) : raw
@@ -72,6 +127,27 @@ interface Props {
   npc?: NPC
   onClose: () => void
   onSaved: (npc: NPC) => void
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs text-parchment/40 font-fantasy uppercase tracking-wider pt-1 border-t border-dark-border/50">{children}</p>
+}
+
+function OptionalTextarea({ label, value, onChange, placeholder, rows = 3 }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; rows?: number
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-parchment/50 font-fantasy">{label}</label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className="w-full bg-dark border border-dark-border rounded px-2 py-1.5 text-xs text-parchment placeholder-parchment/30 resize-none"
+      />
+    </div>
+  )
 }
 
 export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
@@ -106,7 +182,24 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
     setSaving(true)
     setError('')
     try {
-      const actions = form.actionsText.split('\n').map((s) => s.trim()).filter(Boolean)
+      const misc: Record<string, string> = {}
+      const miscMap: [string, keyof NpcForm][] = [
+        ['Особенности',         'features'],
+        ['Спасброски',          'saving_throws'],
+        ['Навыки',              'skills'],
+        ['Иммунитет к урону',   'damage_immunities'],
+        ['Иммунитет к состоянию', 'condition_immunities'],
+        ['Сопротивление урону', 'damage_resistances'],
+        ['Уязвимость к урону',  'damage_vulnerabilities'],
+        ['Чувства',             'senses'],
+        ['Языки',               'languages'],
+        ['Опасность',           'challenge'],
+      ]
+      for (const [label, field] of miscMap) {
+        const val = (form[field] as string).trim()
+        if (val) misc[label] = val
+      }
+
       const body = {
         name: form.name.trim(),
         disposition: form.disposition,
@@ -122,7 +215,14 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
           wis: parseInt(form.abilities.wis),
           cha: parseInt(form.abilities.cha),
         },
-        actions,
+        misc,
+        actions:            toLines(form.actionsText),
+        bonus_actions:      toLines(form.bonusActionsText),
+        reactions:          toLines(form.reactionsText),
+        legendary_actions:  toLines(form.legendaryActionsText),
+        lair_actions:       toLines(form.lairActionsText),
+        regional_effects:   toLines(form.regionalEffectsText),
+        mythic_actions:     toLines(form.mythicActionsText),
       }
       let saved: NPC
       if (npc) {
@@ -223,15 +323,65 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
           </div>
 
           {/* Действия */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-parchment/50 font-fantasy">Действия (каждое с новой строки)</label>
-            <textarea
-              value={form.actionsText}
-              onChange={(e) => setField('actionsText', e.target.value)}
-              rows={5}
-              placeholder={"Укус. Рукопашная атака: +4 к попаданию, досягаемость 5 фт., 1 цель. Урон: 1к6+2 колющего.\nМультиатака. Две атаки."}
-              className="w-full bg-dark border border-dark-border rounded px-2 py-1.5 text-xs text-parchment placeholder-parchment/30 resize-none"
-            />
+          <SectionLabel>Действия</SectionLabel>
+          <OptionalTextarea label="Действия (каждое с новой строки)" value={form.actionsText}
+            onChange={(v) => setField('actionsText', v)} rows={4}
+            placeholder={"Укус. Рукопашная атака: +4 к попаданию, досягаемость 5 фт., 1 цель. Урон: 1к6+2.\nМультиатака. Две атаки."} />
+          <OptionalTextarea label="Бонусные действия" value={form.bonusActionsText}
+            onChange={(v) => setField('bonusActionsText', v)} />
+          <OptionalTextarea label="Реакции" value={form.reactionsText}
+            onChange={(v) => setField('reactionsText', v)} />
+          <OptionalTextarea label="Легендарные действия" value={form.legendaryActionsText}
+            onChange={(v) => setField('legendaryActionsText', v)} />
+          <OptionalTextarea label="Мифические действия" value={form.mythicActionsText}
+            onChange={(v) => setField('mythicActionsText', v)} />
+          <OptionalTextarea label="Действия логова" value={form.lairActionsText}
+            onChange={(v) => setField('lairActionsText', v)} />
+          <OptionalTextarea label="Региональные эффекты" value={form.regionalEffectsText}
+            onChange={(v) => setField('regionalEffectsText', v)} />
+
+          {/* Дополнительные характеристики */}
+          <SectionLabel>Дополнительно</SectionLabel>
+          <OptionalTextarea label="Особенности" value={form.features}
+            onChange={(v) => setField('features', v)} rows={3}
+            placeholder="Бесстрашие. Существо имеет преимущество..." />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Спасброски</label>
+              <input className={inputCls} value={form.saving_throws} onChange={(e) => setField('saving_throws', e.target.value)} placeholder="Мдр +5, Хар +7" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Навыки</label>
+              <input className={inputCls} value={form.skills} onChange={(e) => setField('skills', e.target.value)} placeholder="Восприятие +4, Скрытность +6" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Иммунитет к урону</label>
+              <input className={inputCls} value={form.damage_immunities} onChange={(e) => setField('damage_immunities', e.target.value)} placeholder="яд, психическая энергия" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Иммунитет к состоянию</label>
+              <input className={inputCls} value={form.condition_immunities} onChange={(e) => setField('condition_immunities', e.target.value)} placeholder="испуг, очарование" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Сопротивление урону</label>
+              <input className={inputCls} value={form.damage_resistances} onChange={(e) => setField('damage_resistances', e.target.value)} placeholder="огонь, холод" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Уязвимость к урону</label>
+              <input className={inputCls} value={form.damage_vulnerabilities} onChange={(e) => setField('damage_vulnerabilities', e.target.value)} placeholder="дробящий" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Чувства</label>
+              <input className={inputCls} value={form.senses} onChange={(e) => setField('senses', e.target.value)} placeholder="тёмное зрение 60 фт., пасс. Восприятие 12" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Языки</label>
+              <input className={inputCls} value={form.languages} onChange={(e) => setField('languages', e.target.value)} placeholder="Общий, Гоблинский" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-parchment/50 font-fantasy">Опасность</label>
+              <input className={inputCls} value={form.challenge} onChange={(e) => setField('challenge', e.target.value)} placeholder="1/2 (100 опыта)" />
+            </div>
           </div>
         </div>
 

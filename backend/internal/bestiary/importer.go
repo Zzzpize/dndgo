@@ -22,6 +22,12 @@ type monsterJSON struct {
 	Abilities        json.RawMessage `json:"abilities"`
 	Misc             json.RawMessage `json:"misc"`
 	Actions          json.RawMessage `json:"actions"`
+	Reactions        json.RawMessage `json:"reactions"`
+	BonusActions     json.RawMessage `json:"bonus_actions"`
+	LegendaryActions json.RawMessage `json:"legendary_actions"`
+	LairActions      json.RawMessage `json:"lair_actions"`
+	RegionalEffects  json.RawMessage `json:"regional_effects"`
+	MythicActions    json.RawMessage `json:"mythic_actions"`
 }
 
 func MaybeImport(ctx context.Context, pool *pgxpool.Pool, bestiaryPath string) error {
@@ -43,17 +49,32 @@ func MaybeImport(ctx context.Context, pool *pgxpool.Pool, bestiaryPath string) e
 		return nil
 	}
 
+	seen := make(map[string]bool, len(monsters))
+	unique := monsters[:0]
+	for _, m := range monsters {
+		if !seen[m.NameRu] {
+			seen[m.NameRu] = true
+			unique = append(unique, m)
+		}
+	}
+	monsters = unique
+
 	log.Printf("bestiary: importing %d monsters...", len(monsters))
 
 	rows := make([][]any, 0, len(monsters))
 	for _, m := range monsters {
-		abilities := nullableJSON(m.Abilities)
-		misc := nullableJSON(m.Misc)
-		actions := nullableJSON(m.Actions)
 		rows = append(rows, []any{
 			m.NameRu, m.NameEn, m.TypeAndAlignment,
 			m.ArmorClass, m.HitPoints, m.Speed,
-			abilities, misc, actions,
+			nullableJSON(m.Abilities),
+			nullableJSON(m.Misc),
+			nullableJSONArray(m.Actions),
+			nullableJSONArray(m.Reactions),
+			nullableJSONArray(m.BonusActions),
+			nullableJSONArray(m.LegendaryActions),
+			nullableJSONArray(m.LairActions),
+			nullableJSONArray(m.RegionalEffects),
+			nullableJSONArray(m.MythicActions),
 		})
 	}
 
@@ -61,6 +82,8 @@ func MaybeImport(ctx context.Context, pool *pgxpool.Pool, bestiaryPath string) e
 		"name_ru", "name_en", "type_and_alignment",
 		"armor_class", "hit_points", "speed",
 		"abilities", "misc", "actions",
+		"reactions", "bonus_actions", "legendary_actions",
+		"lair_actions", "regional_effects", "mythic_actions",
 	}
 
 	n, err := pool.CopyFrom(
@@ -109,6 +132,13 @@ func loadFromDir(dir string) ([]monsterJSON, error) {
 func nullableJSON(raw json.RawMessage) any {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
+	}
+	return string(raw)
+}
+
+func nullableJSONArray(raw json.RawMessage) any {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "[]"
 	}
 	return string(raw)
 }

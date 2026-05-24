@@ -64,31 +64,45 @@ func NewHandler(st *store.Store) *Handler {
 }
 
 type npcRequest struct {
-	FolderID      *string         `json:"folder_id"`
-	Name          string          `json:"name"`
-	Disposition   string          `json:"disposition"`
-	AC            string          `json:"ac"`
-	MaxHP         int             `json:"max_hp"`
-	Speed         string          `json:"speed"`
-	TypeAlignment string          `json:"type_alignment"`
-	Abilities     json.RawMessage `json:"abilities"`
-	Actions       json.RawMessage `json:"actions"`
+	FolderID         *string         `json:"folder_id"`
+	Name             string          `json:"name"`
+	Disposition      string          `json:"disposition"`
+	AC               string          `json:"ac"`
+	MaxHP            int             `json:"max_hp"`
+	Speed            string          `json:"speed"`
+	TypeAlignment    string          `json:"type_alignment"`
+	Abilities        json.RawMessage `json:"abilities"`
+	Misc             json.RawMessage `json:"misc"`
+	Actions          json.RawMessage `json:"actions"`
+	Reactions        json.RawMessage `json:"reactions"`
+	BonusActions     json.RawMessage `json:"bonus_actions"`
+	LegendaryActions json.RawMessage `json:"legendary_actions"`
+	LairActions      json.RawMessage `json:"lair_actions"`
+	RegionalEffects  json.RawMessage `json:"regional_effects"`
+	MythicActions    json.RawMessage `json:"mythic_actions"`
 }
 
 type npcResponse struct {
-	ID            string          `json:"id"`
-	UserID        string          `json:"user_id"`
-	RoomID        string          `json:"room_id"`
-	FolderID      *string         `json:"folder_id"`
-	Name          string          `json:"name"`
-	Disposition   string          `json:"disposition"`
-	AC            string          `json:"ac"`
-	MaxHP         int             `json:"max_hp"`
-	Speed         string          `json:"speed"`
-	TypeAlignment string          `json:"type_alignment"`
-	Abilities     json.RawMessage `json:"abilities"`
-	Actions       json.RawMessage `json:"actions"`
-	CreatedAt     time.Time       `json:"created_at"`
+	ID               string          `json:"id"`
+	UserID           string          `json:"user_id"`
+	RoomID           string          `json:"room_id"`
+	FolderID         *string         `json:"folder_id"`
+	Name             string          `json:"name"`
+	Disposition      string          `json:"disposition"`
+	AC               string          `json:"ac"`
+	MaxHP            int             `json:"max_hp"`
+	Speed            string          `json:"speed"`
+	TypeAlignment    string          `json:"type_alignment"`
+	Abilities        json.RawMessage `json:"abilities"`
+	Misc             json.RawMessage `json:"misc"`
+	Actions          json.RawMessage `json:"actions"`
+	Reactions        json.RawMessage `json:"reactions"`
+	BonusActions     json.RawMessage `json:"bonus_actions"`
+	LegendaryActions json.RawMessage `json:"legendary_actions"`
+	LairActions      json.RawMessage `json:"lair_actions"`
+	RegionalEffects  json.RawMessage `json:"regional_effects"`
+	MythicActions    json.RawMessage `json:"mythic_actions"`
+	CreatedAt        time.Time       `json:"created_at"`
 }
 
 type folderResponse struct {
@@ -106,12 +120,23 @@ func toResponse(n store.NPC) npcResponse {
 	}
 	return npcResponse{
 		ID: n.ID.String(), UserID: n.UserID.String(), RoomID: n.RoomID.String(),
-		FolderID: folderID,
-		Name: n.Name, Disposition: n.Disposition,
-		AC: n.AC, MaxHP: n.MaxHP, Speed: n.Speed,
-		TypeAlignment: n.TypeAlignment,
-		Abilities: n.Abilities, Actions: n.Actions,
-		CreatedAt: n.CreatedAt,
+		FolderID:         folderID,
+		Name:             n.Name,
+		Disposition:      n.Disposition,
+		AC:               n.AC,
+		MaxHP:            n.MaxHP,
+		Speed:            n.Speed,
+		TypeAlignment:    n.TypeAlignment,
+		Abilities:        n.Abilities,
+		Misc:             n.Misc,
+		Actions:          n.Actions,
+		Reactions:        n.Reactions,
+		BonusActions:     n.BonusActions,
+		LegendaryActions: n.LegendaryActions,
+		LairActions:      n.LairActions,
+		RegionalEffects:  n.RegionalEffects,
+		MythicActions:    n.MythicActions,
+		CreatedAt:        n.CreatedAt,
 	}
 }
 
@@ -184,7 +209,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	n, err := h.store.CreateNPC(r.Context(), userID, room.ID, store.NPCInput{
 		FolderID: folderID, Name: req.Name, Disposition: req.Disposition, AC: req.AC,
 		MaxHP: req.MaxHP, Speed: req.Speed, TypeAlignment: req.TypeAlignment,
-		Abilities: req.Abilities, Actions: req.Actions,
+		Abilities: req.Abilities, Misc: req.Misc, Actions: req.Actions,
+		Reactions: req.Reactions, BonusActions: req.BonusActions,
+		LegendaryActions: req.LegendaryActions, LairActions: req.LairActions,
+		RegionalEffects: req.RegionalEffects, MythicActions: req.MythicActions,
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
@@ -275,7 +303,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.store.UpdateNPC(r.Context(), id, store.NPCInput{
 		FolderID: folderID, Name: req.Name, Disposition: req.Disposition, AC: req.AC,
 		MaxHP: req.MaxHP, Speed: req.Speed, TypeAlignment: req.TypeAlignment,
-		Abilities: req.Abilities, Actions: req.Actions,
+		Abilities: req.Abilities, Misc: req.Misc, Actions: req.Actions,
+		Reactions: req.Reactions, BonusActions: req.BonusActions,
+		LegendaryActions: req.LegendaryActions, LairActions: req.LairActions,
+		RegionalEffects: req.RegionalEffects, MythicActions: req.MythicActions,
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
@@ -411,15 +442,22 @@ func (h *Handler) CreateFromBestiary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	n, err := h.store.CreateNPC(r.Context(), userID, room.ID, store.NPCInput{
-		FolderID:      folderID,
-		Name:          monster.NameRu,
-		Disposition:   "hostile",
-		AC:            monster.ArmorClass,
-		MaxHP:         parseLeadingInt(monster.HitPoints, 1),
-		Speed:         monster.Speed,
-		TypeAlignment: monster.TypeAndAlignment,
-		Abilities:     convertAbilities(monster.Abilities),
-		Actions:       monster.Actions,
+		FolderID:         folderID,
+		Name:             monster.NameRu,
+		Disposition:      "hostile",
+		AC:               monster.ArmorClass,
+		MaxHP:            parseLeadingInt(monster.HitPoints, 1),
+		Speed:            monster.Speed,
+		TypeAlignment:    monster.TypeAndAlignment,
+		Abilities:        convertAbilities(monster.Abilities),
+		Misc:             monster.Misc,
+		Actions:          monster.Actions,
+		Reactions:        monster.Reactions,
+		BonusActions:     monster.BonusActions,
+		LegendaryActions: monster.LegendaryActions,
+		LairActions:      monster.LairActions,
+		RegionalEffects:  monster.RegionalEffects,
+		MythicActions:    monster.MythicActions,
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")

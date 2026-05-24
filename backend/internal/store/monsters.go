@@ -19,9 +19,15 @@ type MonsterSummary struct {
 
 type Monster struct {
 	MonsterSummary
-	Abilities json.RawMessage `json:"abilities"`
-	Misc      json.RawMessage `json:"misc"`
-	Actions   json.RawMessage `json:"actions"`
+	Abilities        json.RawMessage `json:"abilities"`
+	Misc             json.RawMessage `json:"misc"`
+	Actions          json.RawMessage `json:"actions"`
+	Reactions        json.RawMessage `json:"reactions"`
+	BonusActions     json.RawMessage `json:"bonus_actions"`
+	LegendaryActions json.RawMessage `json:"legendary_actions"`
+	LairActions      json.RawMessage `json:"lair_actions"`
+	RegionalEffects  json.RawMessage `json:"regional_effects"`
+	MythicActions    json.RawMessage `json:"mythic_actions"`
 }
 
 func (s *Store) CountMonsters(ctx context.Context, query string) (int64, error) {
@@ -87,11 +93,15 @@ func (s *Store) GetMonsterByID(ctx context.Context, id int) (Monster, error) {
 	var m Monster
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, name_ru, name_en, type_and_alignment, armor_class, hit_points, speed,
-		       abilities, misc, actions
+		       abilities, misc, actions,
+		       reactions, bonus_actions, legendary_actions,
+		       lair_actions, regional_effects, mythic_actions
 		FROM monsters WHERE id = $1`, id,
 	).Scan(
 		&m.ID, &m.NameRu, &m.NameEn, &m.TypeAndAlignment, &m.ArmorClass, &m.HitPoints, &m.Speed,
 		&m.Abilities, &m.Misc, &m.Actions,
+		&m.Reactions, &m.BonusActions, &m.LegendaryActions,
+		&m.LairActions, &m.RegionalEffects, &m.MythicActions,
 	)
 	return m, err
 }

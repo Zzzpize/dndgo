@@ -35,7 +35,14 @@ export interface NPC {
   speed: string
   type_alignment: string
   abilities: Record<string, number>
+  misc?: Record<string, string>
   actions: string[]
+  reactions?: string[]
+  bonus_actions?: string[]
+  legendary_actions?: string[]
+  lair_actions?: string[]
+  regional_effects?: string[]
+  mythic_actions?: string[]
   created_at: string
 }
 
