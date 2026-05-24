@@ -226,7 +226,82 @@ func (h *Handler) DeleteRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.broadcaster.BroadcastToRoomByCode(code, "ROOM_DELETED", nil)
+
 	if err := h.store.DeleteRoom(r.Context(), room.ID); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) RenameRoom(w http.ResponseWriter, r *http.Request) {
+	claims, _ := auth.ClaimsFromContext(r.Context())
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	code := chi.URLParam(r, "code")
+	room, err := h.store.GetRoomByCode(r.Context(), code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusNotFound, "room not found", "ERR_NOT_FOUND")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	if room.DmUserID != userID {
+		httputil.Error(w, http.StatusForbidden, "only the DM can rename a room", "ERR_FORBIDDEN")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
+		return
+	}
+
+	if err := h.store.RenameRoom(r.Context(), room.ID, req.Name); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	h.broadcaster.BroadcastToRoomByCode(code, "ROOM_RENAMED", map[string]string{"name": req.Name})
+	httputil.JSON(w, http.StatusOK, map[string]string{"name": req.Name})
+}
+
+func (h *Handler) LeaveRoom(w http.ResponseWriter, r *http.Request) {
+	claims, _ := auth.ClaimsFromContext(r.Context())
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	code := chi.URLParam(r, "code")
+	room, err := h.store.GetRoomByCode(r.Context(), code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusNotFound, "room not found", "ERR_NOT_FOUND")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	if room.DmUserID == userID {
+		httputil.Error(w, http.StatusForbidden, "DM cannot leave their own room", "ERR_FORBIDDEN")
+		return
+	}
+
+	if err := h.store.LeaveRoom(r.Context(), room.ID, userID); err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
 		return
 	}

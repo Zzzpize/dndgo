@@ -140,5 +140,14 @@ function dispatch(msg: WsMsg) {
     case 'CHARACTER_UPDATE':
       s.updateCharacter(msg.payload as Parameters<typeof s.updateCharacter>[0])
       break
+    case 'DM_PRESENCE':
+      s.setDmOnline((msg.payload as { online: boolean }).online)
+      break
+    case 'ROOM_RENAMED':
+      s.setRoomName((msg.payload as { name: string }).name)
+      break
+    case 'ROOM_DELETED':
+      s.setRoomDeleted(true)
+      break
   }
 }

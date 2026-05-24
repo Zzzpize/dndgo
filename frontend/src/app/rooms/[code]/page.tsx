@@ -72,6 +72,9 @@ export default function RoomPage() {
   const { user, hydrated, hydrate } = useAuthStore()
   const role = useGameStore((s) => s.role)
   const isConnected = useGameStore((s) => s.isConnected)
+  const isDmOnline = useGameStore((s) => s.isDmOnline)
+  const roomDeleted = useGameStore((s) => s.roomDeleted)
+  const storeRoomName = useGameStore((s) => s.roomName)
   const selectedCharId = useGameStore((s) => s.selectedCharId)
   const setRole = useGameStore((s) => s.setRole)
   const setCharacters = useGameStore((s) => s.setCharacters)
@@ -147,6 +150,10 @@ export default function RoomPage() {
   }, [hydrated, user, code, router, setRole, setCharacters, setNpcs, setNpcFolders])
 
   useEffect(() => {
+    if (roomDeleted) router.replace('/rooms')
+  }, [roomDeleted, router])
+
+  useEffect(() => {
     return () => {
       reset()
     }
@@ -171,7 +178,7 @@ export default function RoomPage() {
             ← Назад
           </button>
           <span className="text-dark-border">|</span>
-          <h1 className="heading-fantasy text-base">{room?.name ?? code}</h1>
+          <h1 className="heading-fantasy text-base">{storeRoomName ?? room?.name ?? code}</h1>
           {role && (
             <span
               className={`text-xs px-2 py-0.5 rounded font-fantasy ${
@@ -188,13 +195,21 @@ export default function RoomPage() {
         <div className="flex items-center gap-3">
           <span
             className={`text-xs flex items-center gap-1.5 ${
-              isConnected ? 'text-green-400' : 'text-ember'
+              role === 'player'
+                ? (isDmOnline ? 'text-green-400' : 'text-ember')
+                : (isConnected ? 'text-green-400' : 'text-ember')
             }`}
           >
             <span
-              className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-ember animate-pulse'}`}
+              className={`w-2 h-2 rounded-full ${
+                role === 'player'
+                  ? (isDmOnline ? 'bg-green-400' : 'bg-ember animate-pulse')
+                  : (isConnected ? 'bg-green-400' : 'bg-ember animate-pulse')
+              }`}
             />
-            {isConnected ? 'Подключено' : 'Переподключение...'}
+            {role === 'player'
+              ? (isDmOnline ? 'ДМ в комнате' : 'ДМ отсутствует')
+              : (isConnected ? 'Подключено' : 'Переподключение...')}
           </span>
           <span className="text-sm text-parchment/50">{user?.username}</span>
           {role === 'dm' && (

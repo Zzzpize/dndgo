@@ -32,6 +32,10 @@ export default function RoomsPage() {
     setRooms((prev) => prev.some((r) => r.id === room.id) ? prev : [room, ...prev])
   }
   const handleEnter = (room: Room) => router.push(`/rooms/${room.code}`)
+  const handleRenamed = (id: string, name: string) =>
+    setRooms((prev) => prev.map((r) => r.id === id ? { ...r, name } : r))
+  const handleDeleted = (id: string) => setRooms((prev) => prev.filter((r) => r.id !== id))
+  const handleLeft = (id: string) => setRooms((prev) => prev.filter((r) => r.id !== id))
 
   if (!hydrated || loading) {
     return (
@@ -74,7 +78,7 @@ export default function RoomsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {rooms.map((room) => (
-              <RoomCard key={room.id} room={room} onEnter={handleEnter} />
+              <RoomCard key={room.id} room={room} onEnter={handleEnter} onRenamed={handleRenamed} onDeleted={handleDeleted} onLeft={handleLeft} />
             ))}
           </div>
         )}

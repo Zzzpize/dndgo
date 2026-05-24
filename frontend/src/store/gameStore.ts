@@ -134,6 +134,9 @@ interface GameStore {
   npcFolders: NpcFolder[]
   diceLogs: DiceLogEntry[]
   isConnected: boolean
+  isDmOnline: boolean
+  roomDeleted: boolean
+  roomName: string | null
   role: 'dm' | 'player' | null
   activeInitIndex: number
   selectedTokenId: string | null
@@ -144,6 +147,9 @@ interface GameStore {
 
   setRole: (r: 'dm' | 'player') => void
   setConnected: (v: boolean) => void
+  setDmOnline: (v: boolean) => void
+  setRoomDeleted: (v: boolean) => void
+  setRoomName: (v: string) => void
   setActiveTool: (t: 'pointer' | 'fog' | 'fog_hide' | 'ruler') => void
   setCharacters: (chars: Character[]) => void
   addCharacter: (char: Character) => void
@@ -185,6 +191,9 @@ const initialState = {
   npcFolders: [] as NpcFolder[],
   diceLogs: [] as DiceLogEntry[],
   isConnected: false,
+  isDmOnline: false,
+  roomDeleted: false,
+  roomName: null,
   role: null as 'dm' | 'player' | null,
   activeInitIndex: 0,
   selectedTokenId: null as string | null,
@@ -199,6 +208,9 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setRole: (r) => set({ role: r }),
   setConnected: (v) => set({ isConnected: v }),
+  setDmOnline: (v) => set({ isDmOnline: v }),
+  setRoomDeleted: (v) => set({ roomDeleted: v }),
+  setRoomName: (v) => set({ roomName: v }),
   setActiveTool: (t) => set({ activeTool: t }),
   setCharacters: (chars) => set({ characters: chars }),
   addCharacter: (char) => set((s) => ({ characters: [...s.characters, char] })),

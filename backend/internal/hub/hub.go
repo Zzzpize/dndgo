@@ -45,6 +45,7 @@ const (
 	EvCharUpdate     = "CHARACTER_UPDATE"
 	EvMapClear       = "MAP_CLEAR"
 	EvSessionClear   = "SESSION_CLEAR"
+	EvDmPresence     = "DM_PRESENCE"
 )
 
 type Message struct {
@@ -111,6 +112,26 @@ func (h *Hub) getOrCreateRoom(code string) *Room {
 	return r
 }
 
+func (r *Room) notifyDmPresence() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	dmOnline := false
+	for c := range r.clients {
+		if c.role == "dm" {
+			dmOnline = true
+			break
+		}
+	}
+	data, _ := json.Marshal(map[string]bool{"online": dmOnline})
+	msg, _ := json.Marshal(Message{Type: EvDmPresence, Payload: json.RawMessage(data)})
+	for c := range r.clients {
+		select {
+		case c.send <- msg:
+		default:
+		}
+	}
+}
+
 func (r *Room) run() {
 	for {
 		select {
@@ -118,6 +139,7 @@ func (r *Room) run() {
 			r.mu.Lock()
 			r.clients[c] = struct{}{}
 			r.mu.Unlock()
+			go r.notifyDmPresence()
 
 		case c := <-r.unregister:
 			r.mu.Lock()
@@ -126,6 +148,7 @@ func (r *Room) run() {
 				close(c.send)
 			}
 			r.mu.Unlock()
+			go r.notifyDmPresence()
 
 		case msg := <-r.broadcast:
 			r.mu.RLock()

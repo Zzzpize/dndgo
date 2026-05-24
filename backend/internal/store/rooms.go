@@ -135,3 +135,13 @@ func (s *Store) DeleteRoom(ctx context.Context, roomID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM rooms WHERE id = $1`, roomID)
 	return err
 }
+
+func (s *Store) RenameRoom(ctx context.Context, roomID uuid.UUID, name string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE rooms SET name = $2 WHERE id = $1`, roomID, name)
+	return err
+}
+
+func (s *Store) LeaveRoom(ctx context.Context, roomID, userID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM room_members WHERE room_id = $1 AND user_id = $2`, roomID, userID)
+	return err
+}

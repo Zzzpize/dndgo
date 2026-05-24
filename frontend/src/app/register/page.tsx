@@ -49,7 +49,7 @@ export default function RegisterPage() {
             autoFocus
           />
           <Input
-            label="Имя персонажа"
+            label="Никнейм"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Гэндальф"
