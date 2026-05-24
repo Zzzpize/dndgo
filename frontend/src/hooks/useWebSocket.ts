@@ -111,6 +111,9 @@ function dispatch(msg: WsMsg) {
     case 'FOG_REVEAL':
       s.addFogPaths(msg.payload as Parameters<typeof s.addFogPaths>[0])
       break
+    case 'FOG_HIDE':
+      s.addFogPaths(msg.payload as Parameters<typeof s.addFogPaths>[0])
+      break
     case 'FOG_CLEAR':
       s.setFogState(true, [])
       break

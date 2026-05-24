@@ -53,6 +53,7 @@ export interface FogPath {
   rel_x: number
   rel_y: number
   radius: number
+  type?: 'reveal' | 'hide'
 }
 
 export interface GameStateData {
@@ -84,7 +85,8 @@ export interface CharacterStats {
   intelligence: number
   wisdom: number
   charisma: number
-  has_shield: boolean
+  shield_bonus: number
+  speed: string
   str_mod: number
   dex_mod: number
   con_mod: number
@@ -130,11 +132,11 @@ interface GameStore {
   selectedCharId: string | null
   editingTokenId: string | null
   rulerPos: { x1: number; y1: number; x2: number; y2: number } | null
-  activeTool: 'pointer' | 'fog' | 'ruler'
+  activeTool: 'pointer' | 'fog' | 'fog_hide' | 'ruler'
 
   setRole: (r: 'dm' | 'player') => void
   setConnected: (v: boolean) => void
-  setActiveTool: (t: 'pointer' | 'fog' | 'ruler') => void
+  setActiveTool: (t: 'pointer' | 'fog' | 'fog_hide' | 'ruler') => void
   setCharacters: (chars: Character[]) => void
   addCharacter: (char: Character) => void
   updateCharacter: (char: Character) => void

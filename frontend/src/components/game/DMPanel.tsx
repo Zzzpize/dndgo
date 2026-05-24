@@ -1173,6 +1173,8 @@ function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; 
   const gameState = useGameStore((s) => s.gameState)
   const [gridEnabled, setGridEnabled] = useState(gameState?.grid_enabled ?? true)
   const [gridSize, setGridSize] = useState(gameState?.grid_size ?? 50)
+  const [gridSizeInput, setGridSizeInput] = useState(String(gameState?.grid_size ?? 50))
+  const [gridSizeError, setGridSizeError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1197,7 +1199,14 @@ function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; 
   }
 
   const applyGrid = () => {
-    sendMessage('GRID_UPDATE', { grid_enabled: gridEnabled, grid_size: gridSize })
+    const parsed = parseInt(gridSizeInput)
+    if (!gridSizeInput || isNaN(parsed) || parsed < 1) {
+      setGridSizeError('Размер: больше 0')
+      return
+    }
+    setGridSizeError('')
+    setGridSize(parsed)
+    sendMessage('GRID_UPDATE', { grid_enabled: gridEnabled, grid_size: parsed })
   }
 
   return (
@@ -1245,14 +1254,22 @@ function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; 
         </label>
         <div className="flex items-center gap-2">
           <span className="text-xs text-parchment/50 w-20">Размер клетки</span>
-          <input
-            type="number"
-            value={gridSize}
-            min={20}
-            max={200}
-            onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
-            className="w-16 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
+          <div className="relative">
+            <input
+              type="number"
+              value={gridSizeInput}
+              min={1}
+              onChange={(e) => { setGridSizeInput(e.target.value); setGridSizeError('') }}
+              className={`w-16 bg-dark border rounded px-2 py-1 text-xs text-parchment text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-colors ${
+                gridSizeError ? 'border-ember/70' : 'border-dark-border'
+              }`}
+            />
+            {gridSizeError && (
+              <div className="absolute bottom-full left-0 mb-1.5 w-40 bg-dark-card border border-ember/40 rounded px-2 py-1.5 text-xs shadow-xl z-50 pointer-events-none">
+                <p className="text-ember font-fantasy">{gridSizeError}</p>
+              </div>
+            )}
+          </div>
           <span className="text-xs text-parchment/30">px</span>
         </div>
         <button

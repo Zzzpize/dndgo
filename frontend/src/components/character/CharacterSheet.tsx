@@ -25,6 +25,7 @@ export function CharacterSheet({ character, sendMessage }: Props) {
   const [hpDelta, setHpDelta] = useState('')
   const [saving, setSaving] = useState(false)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
+  const role = useGameStore((s) => s.role)
   // Reset tab when character changes
   useEffect(() => { setTab('combat') }, [character.id])
 
@@ -84,7 +85,7 @@ export function CharacterSheet({ character, sendMessage }: Props) {
 
       <div className="p-3">
         {tab === 'combat' && (
-          <CombatTab character={character} hpDelta={hpDelta} setHpDelta={setHpDelta} saving={saving} applyHP={applyHP} handleCustomHP={handleCustomHP}  />
+          <CombatTab character={character} hpDelta={hpDelta} setHpDelta={setHpDelta} saving={saving} applyHP={applyHP} handleCustomHP={handleCustomHP} isDM={role === 'dm'} />
         )}
         {tab === 'stats' && <StatsTab character={character} />}
         {tab === 'spells' && <SpellsTab character={character} />}
@@ -94,13 +95,14 @@ export function CharacterSheet({ character, sendMessage }: Props) {
   )
 }
 
-function CombatTab({ character, hpDelta, setHpDelta, saving, applyHP, handleCustomHP }: {
+function CombatTab({ character, hpDelta, setHpDelta, saving, applyHP, handleCustomHP, isDM }: {
   character: Character
   hpDelta: string
   setHpDelta: (v: string) => void
   saving: boolean
   applyHP: (d: number) => Promise<void>
   handleCustomHP: () => Promise<void>
+  isDM: boolean
 }) {
   const hpPct = Math.max(0, character.hp) / Math.max(character.max_hp, 1)
   const hpColor = hpPct > 0.5 ? 'bg-green-600' : hpPct > 0.25 ? 'bg-yellow-500' : 'bg-ember'
@@ -119,48 +121,57 @@ function CombatTab({ character, hpDelta, setHpDelta, saving, applyHP, handleCust
         {character.temp_hp > 0 && (
           <p className="text-xs text-blue-300 mb-2">+{character.temp_hp} врем. HP</p>
         )}
-        <div className="flex gap-1 mb-2">
-          {[-5, -1, 1, 5].map((d) => (
-            <button
-              key={d}
-              disabled={saving}
-              onClick={() => applyHP(d)}
-              className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
-                d < 0
-                  ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
-                  : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
-              }`}
-            >
-              {d > 0 ? `+${d}` : d}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1">
-          <input
-            type="number"
-            value={hpDelta}
-            onChange={(e) => setHpDelta(e.target.value)}
-            placeholder="±delta"
-            className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
-          <button
-            disabled={saving}
-            onClick={handleCustomHP}
-            className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors disabled:opacity-50"
-          >
-            OK
-          </button>
-        </div>
+        {isDM && (
+          <>
+            <div className="flex gap-1 mb-2">
+              {[-5, -1, 1, 5].map((d) => (
+                <button
+                  key={d}
+                  disabled={saving}
+                  onClick={() => applyHP(d)}
+                  className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
+                    d < 0
+                      ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
+                      : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
+                  }`}
+                >
+                  {d > 0 ? `+${d}` : d}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              <input
+                type="number"
+                value={hpDelta}
+                onChange={(e) => setHpDelta(e.target.value)}
+                placeholder="±delta"
+                className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                disabled={saving}
+                onClick={handleCustomHP}
+                className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors disabled:opacity-50"
+              >
+                OK
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div className="bg-dark rounded p-3 border border-dark-border text-center">
           <p className="text-parchment/50 text-xs font-fantasy mb-1">КД</p>
-          <p className="text-2xl font-bold text-parchment">{character.ac}</p>
+          <p className="text-2xl font-bold text-parchment">{character.effective_ac}</p>
+          {(character.stats?.shield_bonus ?? 0) > 0 && (
+            <p className="text-[10px] text-parchment/60 mt-0.5">(щит: +{character.stats!.shield_bonus})</p>
+          )}
         </div>
         <div className="bg-dark rounded p-3 border border-dark-border text-center">
-          <p className="text-parchment/50 text-xs font-fantasy mb-1">КД (щит)</p>
-          <p className="text-2xl font-bold text-parchment">{character.effective_ac}</p>
+          <p className="text-parchment/50 text-xs font-fantasy mb-1">Скорость</p>
+          <p className="text-xl font-bold text-parchment leading-snug break-words">
+            {character.stats?.speed || '—'}
+          </p>
         </div>
       </div>
     </div>

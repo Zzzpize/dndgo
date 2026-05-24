@@ -16,11 +16,12 @@ import { DMPanel } from '@/components/game/DMPanel'
 import { DiceRoller } from '@/components/dice/DiceRoller'
 import api from '@/lib/api'
 
-type Tool = 'pointer' | 'fog' | 'ruler'
+type Tool = 'pointer' | 'fog' | 'fog_hide' | 'ruler'
 const TOOLS: { key: Tool; icon: string; title: string }[] = [
-  { key: 'pointer', icon: '✥', title: 'Указатель' },
-  { key: 'ruler',  icon: '📏', title: 'Линейка' },
-  { key: 'fog',    icon: '☁',  title: 'Туман войны' },
+  { key: 'pointer',  icon: '✥',  title: 'Указатель' },
+  { key: 'ruler',    icon: '📏', title: 'Линейка' },
+  { key: 'fog',      icon: '☁',  title: 'Убрать туман' },
+  { key: 'fog_hide', icon: '🌑', title: 'Добавить туман' },
 ]
 
 function ToolBar() {
@@ -259,7 +260,7 @@ export default function RoomPage() {
               </button>
             </div>
             <div className="overflow-y-auto flex-1">
-              <NpcSheet npc={selectedNpc} token={selectedToken} sendMessage={sendMessage} />
+              <NpcSheet npc={selectedNpc} token={selectedToken} sendMessage={sendMessage} role={role} />
             </div>
           </div>
         )}

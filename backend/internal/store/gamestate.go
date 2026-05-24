@@ -12,6 +12,7 @@ type FogPath struct {
 	RelX   float64 `json:"rel_x"`
 	RelY   float64 `json:"rel_y"`
 	Radius float64 `json:"radius"`
+	Type   string  `json:"type,omitempty"` // "reveal" (default) or "hide"
 }
 
 type GameState struct {

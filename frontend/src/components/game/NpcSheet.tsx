@@ -7,6 +7,7 @@ interface Props {
   npc: NPC
   token: MapToken
   sendMessage: (type: string, payload?: unknown) => void
+  role: 'dm' | 'player' | null
 }
 
 const ABILITY_LABELS: { key: string; short: string }[] = [
@@ -18,7 +19,7 @@ const ABILITY_LABELS: { key: string; short: string }[] = [
   { key: 'cha', short: 'ХАР' },
 ]
 
-export function NpcSheet({ npc, token, sendMessage }: Props) {
+export function NpcSheet({ npc, token, sendMessage, role }: Props) {
   const currentHp = token.current_hp ?? npc.max_hp
   const maxHp = token.max_hp ?? npc.max_hp
   const [hpDelta, setHpDelta] = useState('')
@@ -64,48 +65,62 @@ export function NpcSheet({ npc, token, sendMessage }: Props) {
         <div className="w-full h-2 bg-dark-border rounded-full overflow-hidden">
           <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct * 100}%` }} />
         </div>
-        <div className="flex gap-1">
-          {[-5, -1, 1, 5].map((d) => (
-            <button
-              key={d}
-              disabled={busy}
-              onClick={() => applyHP(d)}
-              className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
-                d < 0
-                  ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
-                  : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
-              }`}
-            >
-              {d > 0 ? `+${d}` : d}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1">
-          <input
-            type="number"
-            value={hpDelta}
-            onChange={(e) => setHpDelta(e.target.value)}
-            placeholder="±delta"
-            className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
-          <button
-            onClick={handleCustomHP}
-            className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors"
-          >
-            OK
-          </button>
-        </div>
+        {role === 'dm' && (
+          <>
+            <div className="flex gap-1">
+              {[-5, -1, 1, 5].map((d) => (
+                <button
+                  key={d}
+                  disabled={busy}
+                  onClick={() => applyHP(d)}
+                  className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
+                    d < 0
+                      ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
+                      : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
+                  }`}
+                >
+                  {d > 0 ? `+${d}` : d}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              <input
+                type="number"
+                value={hpDelta}
+                onChange={(e) => setHpDelta(e.target.value)}
+                placeholder="±delta"
+                className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                onClick={handleCustomHP}
+                className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* КД + Скорость */}
       <div className="grid grid-cols-2 gap-2 p-3 border-b border-dark-border">
         <div className="bg-dark rounded p-2 border border-dark-border text-center">
           <p className="text-parchment/50 text-xs font-fantasy mb-1">КД</p>
-          <p className="text-xl font-bold text-parchment">{npc.ac}</p>
+          {(() => {
+            const m = npc.ac.match(/^(\S+)(\s+\(.*\))?$/)
+            const num = m?.[1] ?? npc.ac
+            const note = m?.[2]?.trim() ?? null
+            return (
+              <>
+                <p className="text-xl font-bold text-parchment">{num}</p>
+                {note && <p className="text-[10px] text-parchment/60 leading-snug mt-0.5 break-words">{note}</p>}
+              </>
+            )
+          })()}
         </div>
         <div className="bg-dark rounded p-2 border border-dark-border text-center">
           <p className="text-parchment/50 text-xs font-fantasy mb-1">Скорость</p>
-          <p className="text-xs text-parchment leading-tight mt-1">{npc.speed || '—'}</p>
+          <p className="text-xs text-parchment leading-tight mt-1 break-words">{npc.speed || '—'}</p>
         </div>
       </div>
 

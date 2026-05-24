@@ -4,15 +4,15 @@ import { useState } from 'react'
 import api from '@/lib/api'
 import { NPC, useGameStore } from '@/store/gameStore'
 
-interface AbilityScores { str: number; dex: number; con: number; int: number; wis: number; cha: number }
+interface AbilityScores { str: string; dex: string; con: string; int: string; wis: string; cha: string }
 
-const defaultAbilities = (): AbilityScores => ({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
+const defaultAbilities = (): AbilityScores => ({ str: '10', dex: '10', con: '10', int: '10', wis: '10', cha: '10' })
 
 interface NpcForm {
   name: string
   disposition: 'hostile' | 'neutral' | 'friendly'
   ac: string
-  max_hp: number
+  max_hp: string
   speed: string
   type_alignment: string
   abilities: AbilityScores
@@ -23,7 +23,7 @@ const defaultForm = (): NpcForm => ({
   name: '',
   disposition: 'hostile',
   ac: '10',
-  max_hp: 10,
+  max_hp: '10',
   speed: '30 фт.',
   type_alignment: '',
   abilities: defaultAbilities(),
@@ -34,22 +34,24 @@ const fromNPC = (n: NPC): NpcForm => ({
   name: n.name,
   disposition: n.disposition,
   ac: n.ac,
-  max_hp: n.max_hp,
+  max_hp: String(n.max_hp),
   speed: n.speed,
   type_alignment: n.type_alignment,
   abilities: {
-    str: (n.abilities?.str ?? 10),
-    dex: (n.abilities?.dex ?? 10),
-    con: (n.abilities?.con ?? 10),
-    int: (n.abilities?.int ?? 10),
-    wis: (n.abilities?.wis ?? 10),
-    cha: (n.abilities?.cha ?? 10),
+    str: String(n.abilities?.str ?? 10),
+    dex: String(n.abilities?.dex ?? 10),
+    con: String(n.abilities?.con ?? 10),
+    int: String(n.abilities?.int ?? 10),
+    wis: String(n.abilities?.wis ?? 10),
+    cha: String(n.abilities?.cha ?? 10),
   },
   actionsText: Array.isArray(n.actions) ? n.actions.join('\n') : '',
 })
 
-const modStr = (score: number) => {
-  const m = Math.floor((score - 10) / 2)
+const modStr = (raw: string | number) => {
+  const n = typeof raw === 'string' ? parseInt(raw) : raw
+  if (isNaN(n)) return '—'
+  const m = Math.floor((n - 10) / 2)
   return m >= 0 ? `+${m}` : `${m}`
 }
 
@@ -82,12 +84,25 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
   const setField = <K extends keyof NpcForm>(key: K, value: NpcForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
-  const setAbility = (key: keyof AbilityScores, value: number) =>
+  const setAbility = (key: keyof AbilityScores, value: string) =>
     setForm((f) => ({ ...f, abilities: { ...f.abilities, [key]: value } }))
 
   const handleSave = async () => {
     if (!form.name.trim()) { setError('Введите имя'); return }
-    if (form.max_hp < 1) { setError('HP должно быть не менее 1'); return }
+
+    const numMaxHp = parseInt(form.max_hp)
+    if (!form.max_hp || isNaN(numMaxHp) || numMaxHp < 1) {
+      setError('Макс. HP: не менее 1'); return
+    }
+
+    const abilityKeys = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
+    for (const key of abilityKeys) {
+      const v = parseInt(form.abilities[key])
+      if (!form.abilities[key] || isNaN(v) || v < 1 || v > 30) {
+        setError('Характеристики: все значения от 1 до 30'); return
+      }
+    }
+
     setSaving(true)
     setError('')
     try {
@@ -96,10 +111,17 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
         name: form.name.trim(),
         disposition: form.disposition,
         ac: form.ac || '10',
-        max_hp: form.max_hp,
+        max_hp: numMaxHp,
         speed: form.speed,
         type_alignment: form.type_alignment,
-        abilities: form.abilities,
+        abilities: {
+          str: parseInt(form.abilities.str),
+          dex: parseInt(form.abilities.dex),
+          con: parseInt(form.abilities.con),
+          int: parseInt(form.abilities.int),
+          wis: parseInt(form.abilities.wis),
+          cha: parseInt(form.abilities.cha),
+        },
         actions,
       }
       let saved: NPC
@@ -166,7 +188,8 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-parchment/50 font-fantasy">Макс. HP</label>
-              <input type="number" min={1} className={numCls} value={form.max_hp} onChange={(e) => setField('max_hp', parseInt(e.target.value) || 1)} />
+              <input type="number" min={1} className={numCls} value={form.max_hp}
+                onChange={(e) => setField('max_hp', e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-parchment/50 font-fantasy">Скорость</label>
@@ -179,18 +202,19 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
             <p className="text-xs text-parchment/50 font-fantasy mb-2">Характеристики</p>
             <div className="grid grid-cols-6 gap-1.5">
               {ABILITY_LABELS.map(({ key, short }) => {
-                const score = form.abilities[key]
+                const raw = form.abilities[key]
+                const numScore = parseInt(raw)
                 return (
                   <div key={key} className="bg-dark rounded border border-dark-border p-1.5 flex flex-col items-center gap-0.5">
                     <span className="text-xs text-parchment/50 font-fantasy">{short}</span>
                     <input
                       type="number" min={1} max={30}
-                      value={score}
-                      onChange={(e) => setAbility(key, parseInt(e.target.value) || 10)}
+                      value={raw}
+                      onChange={(e) => setAbility(key, e.target.value)}
                       className="w-full text-center bg-transparent border-b border-dark-border text-parchment text-sm font-bold focus:outline-none focus:border-gold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
-                    <span className={`text-xs font-mono ${Math.floor((score - 10) / 2) >= 0 ? 'text-green-400' : 'text-ember'}`}>
-                      {modStr(score)}
+                    <span className={`text-xs font-mono ${!isNaN(numScore) && Math.floor((numScore - 10) / 2) >= 0 ? 'text-green-400' : 'text-ember'}`}>
+                      {modStr(raw)}
                     </span>
                   </div>
                 )

@@ -32,7 +32,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     ruler: Konva.Layer
   } | null>(null)
 
-  const activeToolRef = useRef<'pointer' | 'fog' | 'ruler'>('pointer')
+  const activeToolRef = useRef<'pointer' | 'fog' | 'fog_hide' | 'ruler'>('pointer')
   const sendMessageRef = useRef(sendMessage)
   const isPaintingRef = useRef(false)
   const rulerStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -92,7 +92,22 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const key = `${Math.round(wp.x / (gridSize * 0.5))},${Math.round(wp.y / (gridSize * 0.5))}`
     if (lastFogCellRef.current === key) return
     lastFogCellRef.current = key
-    sendMessageRef.current('FOG_REVEAL', [{ rel_x, rel_y, radius: gridSize * 1.5 }])
+    sendMessageRef.current('FOG_REVEAL', [{ rel_x, rel_y, radius: gridSize * 1.5, type: 'reveal' }])
+  }, [])
+
+  const hideFogAtPointer = useCallback((stage: Konva.Stage) => {
+    const wp = getWorldPos(stage)
+    if (!wp) return
+    const gs = useGameStore.getState().gameState
+    if (gs?.fog_cleared) return
+    const gridSize = gs?.grid_size ?? 50
+    const rel_x = wp.x / WORLD_W
+    const rel_y = wp.y / worldHRef.current
+    if (rel_x < 0 || rel_y < 0 || rel_x > 1 || rel_y > 1) return
+    const key = `${Math.round(wp.x / (gridSize * 0.5))},${Math.round(wp.y / (gridSize * 0.5))}`
+    if (lastFogCellRef.current === key) return
+    lastFogCellRef.current = key
+    sendMessageRef.current('FOG_HIDE', [{ rel_x, rel_y, radius: gridSize * 1.5, type: 'hide' }])
   }, [])
 
   useEffect(() => {
@@ -148,6 +163,11 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         isPaintingRef.current = true
         lastFogCellRef.current = ''
         revealFogAtPointer(stage)
+      } else if (tool === 'fog_hide') {
+        e.evt.preventDefault()
+        isPaintingRef.current = true
+        lastFogCellRef.current = ''
+        hideFogAtPointer(stage)
       } else if (tool === 'ruler') {
         const wp = getWorldPos(stage)
         if (!wp) return
@@ -164,6 +184,9 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       if (tool === 'fog' && isPaintingRef.current) {
         e.evt.preventDefault()
         revealFogAtPointer(stage)
+      } else if (tool === 'fog_hide' && isPaintingRef.current) {
+        e.evt.preventDefault()
+        hideFogAtPointer(stage)
       } else if (tool === 'ruler' && rulerStartRef.current) {
         const wp = getWorldPos(stage)
         if (!wp) return
@@ -200,7 +223,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       stageRef.current = null
       layersRef.current = null
     }
-  }, [revealFogAtPointer])
+  }, [revealFogAtPointer, hideFogAtPointer])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -208,8 +231,8 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     stage.draggable(activeTool === 'pointer')
     if (containerRef.current) {
       containerRef.current.style.cursor =
-        activeTool === 'fog' ? 'crosshair' :
-        activeTool === 'ruler' ? 'crosshair' : 'grab'
+        activeTool === 'fog' || activeTool === 'fog_hide' || activeTool === 'ruler'
+          ? 'crosshair' : 'grab'
     }
   }, [activeTool])
 
@@ -253,6 +276,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const layer = layersRef.current?.fog
     if (!layer) return
     layer.destroyChildren()
+    layer.opacity(1)
 
     if (gameState?.fog_cleared ?? true) {
       layer.batchDraw()
@@ -260,18 +284,39 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     }
 
     const fogOpacity = role === 'dm' ? 0.45 : 0.92
-    layer.opacity(fogOpacity)
-    layer.add(new Konva.Rect({ x: 0, y: 0, width: WORLD_W, height: worldHRef.current, fill: 'black' }))
+    const worldH = worldHRef.current
+    const paths = gameState?.fog_paths ?? []
 
-    for (const path of (gameState?.fog_paths ?? [])) {
-      layer.add(new Konva.Circle({
-        x: path.rel_x * WORLD_W,
-        y: path.rel_y * worldHRef.current,
-        radius: path.radius,
-        fill: 'black',
-        globalCompositeOperation: 'destination-out',
-      }))
+    // Isolated group: destination-out operations are contained within the group's
+    // offscreen canvas, preventing anti-aliased edge artifacts from overlapping circles.
+    const fogGroup = new Konva.Group()
+    fogGroup.add(new Konva.Rect({ x: 0, y: 0, width: WORLD_W, height: worldH, fill: 'black' }))
+
+    for (const path of paths) {
+      if (!path.type || path.type === 'reveal') {
+        fogGroup.add(new Konva.Circle({
+          x: path.rel_x * WORLD_W,
+          y: path.rel_y * worldH,
+          radius: path.radius,
+          fill: 'black',
+          globalCompositeOperation: 'destination-out',
+        }))
+      } else {
+        // Hide path: paint fog back over a revealed area
+        fogGroup.add(new Konva.Circle({
+          x: path.rel_x * WORLD_W,
+          y: path.rel_y * worldH,
+          radius: path.radius,
+          fill: 'black',
+        }))
+      }
     }
+
+    if (worldH > 0) {
+      fogGroup.cache({ x: 0, y: 0, width: WORLD_W, height: worldH, pixelRatio: 1 })
+    }
+    fogGroup.opacity(fogOpacity)
+    layer.add(fogGroup)
     layer.batchDraw()
   }, [gameState?.fog_paths, gameState?.fog_cleared, gameState?.map_aspect, role])
 

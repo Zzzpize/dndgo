@@ -33,6 +33,7 @@ const (
 	EvDiceLogClear   = "DICE_LOG_CLEAR"
 	EvGridUpdate     = "GRID_UPDATE"
 	EvFogReveal      = "FOG_REVEAL"
+	EvFogHide        = "FOG_HIDE"
 	EvFogClear       = "FOG_CLEAR"
 	EvFogFill        = "FOG_FILL"
 	EvInitUpdate     = "INIT_UPDATE"
@@ -332,6 +333,34 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			return
 		}
 		h.broadcastToRoom(c.room, EvFogReveal, newPaths)
+
+	case EvFogHide:
+		if c.role != "dm" {
+			return
+		}
+		var newPaths []store.FogPath
+		if err := json.Unmarshal(msg.Payload, &newPaths); err != nil {
+			return
+		}
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			return
+		}
+		if gs.FogCleared {
+			return
+		}
+		var existing []store.FogPath
+		if len(gs.FogPaths) > 0 {
+			json.Unmarshal(gs.FogPaths, &existing) //nolint:errcheck
+		}
+		merged := append(existing, newPaths...)
+		data, _ := json.Marshal(merged)
+		gs.FogPaths = json.RawMessage(data)
+		if err := h.store.UpsertGameState(ctx, gs); err != nil {
+			log.Printf("hub: fog hide: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvFogHide, newPaths)
 
 	case EvFogFill:
 		if c.role != "dm" {

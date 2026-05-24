@@ -16,13 +16,14 @@ interface Weapon {
 type StatKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma'
 
 interface StatsForm {
-  strength: number
-  dexterity: number
-  constitution: number
-  intelligence: number
-  wisdom: number
-  charisma: number
-  has_shield: boolean
+  strength: string
+  dexterity: string
+  constitution: string
+  intelligence: string
+  wisdom: string
+  charisma: string
+  shield_bonus: string
+  speed: string
 }
 
 interface Ability {
@@ -36,11 +37,11 @@ interface CharForm {
   subclass: string
   race: string
   subrace: string
-  level: number
-  max_hp: number
-  hp: number
-  temp_hp: number
-  ac: number
+  level: string
+  max_hp: string
+  hp: string
+  temp_hp: string
+  ac: string
   stats: StatsForm
   weapons: Weapon[]
   spell_slots: Record<string, number>
@@ -55,14 +56,15 @@ const defaultForm = (): CharForm => ({
   subclass: '',
   race: '',
   subrace: '',
-  level: 1,
-  max_hp: 10,
-  hp: 10,
-  temp_hp: 0,
-  ac: 10,
+  level: '1',
+  max_hp: '10',
+  hp: '10',
+  temp_hp: '0',
+  ac: '10',
   stats: {
-    strength: 10, dexterity: 10, constitution: 10,
-    intelligence: 10, wisdom: 10, charisma: 10, has_shield: false,
+    strength: '10', dexterity: '10', constitution: '10',
+    intelligence: '10', wisdom: '10', charisma: '10',
+    shield_bonus: '0', speed: '30 фт.',
   },
   weapons: [],
   spell_slots: {},
@@ -72,26 +74,27 @@ const defaultForm = (): CharForm => ({
 })
 
 const fromCharacter = (c: Character): CharForm => {
-  const s = (c.stats as Record<string, unknown>) ?? {}
+  const s = (c.stats as unknown as Record<string, unknown>) ?? {}
   return {
     name: c.name,
     class: c.class,
     subclass: c.subclass,
     race: c.race,
     subrace: c.subrace,
-    level: c.level,
-    max_hp: c.max_hp,
-    hp: c.hp,
-    temp_hp: c.temp_hp,
-    ac: c.ac,
+    level: String(c.level),
+    max_hp: String(c.max_hp),
+    hp: String(c.hp),
+    temp_hp: String(c.temp_hp),
+    ac: String(c.ac),
     stats: {
-      strength: (s.strength as number) ?? 10,
-      dexterity: (s.dexterity as number) ?? 10,
-      constitution: (s.constitution as number) ?? 10,
-      intelligence: (s.intelligence as number) ?? 10,
-      wisdom: (s.wisdom as number) ?? 10,
-      charisma: (s.charisma as number) ?? 10,
-      has_shield: (s.has_shield as boolean) ?? false,
+      strength: String((s.strength as number) ?? 10),
+      dexterity: String((s.dexterity as number) ?? 10),
+      constitution: String((s.constitution as number) ?? 10),
+      intelligence: String((s.intelligence as number) ?? 10),
+      wisdom: String((s.wisdom as number) ?? 10),
+      charisma: String((s.charisma as number) ?? 10),
+      shield_bonus: String((s.shield_bonus as number) ?? 0),
+      speed: (s.speed as string) ?? '30 фт.',
     },
     weapons: Array.isArray(c.weapons) ? (c.weapons as Weapon[]) : [],
     spell_slots: ((c.spell_slots as Record<string, number>) ?? {}),
@@ -101,8 +104,10 @@ const fromCharacter = (c: Character): CharForm => {
   }
 }
 
-const modStr = (score: number) => {
-  const m = Math.floor((score - 10) / 2)
+const modStr = (raw: string | number) => {
+  const n = typeof raw === 'string' ? parseInt(raw) : raw
+  if (isNaN(n)) return '—'
+  const m = Math.floor((n - 10) / 2)
   return m >= 0 ? `+${m}` : `${m}`
 }
 
@@ -133,6 +138,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+const STAT_KEYS = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const
+
 export function CharacterModal({ roomCode, character, onClose, onSaved }: Props) {
   const addCharacter = useGameStore((s) => s.addCharacter)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
@@ -146,21 +153,66 @@ export function CharacterModal({ roomCode, character, onClose, onSaved }: Props)
   const setField = <K extends keyof CharForm>(key: K, value: CharForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
-  const setStat = (key: keyof StatsForm, value: number | boolean) =>
+  const setStat = (key: keyof StatsForm, value: string) =>
     setForm((f) => ({ ...f, stats: { ...f.stats, [key]: value } }))
 
   const handleSave = async () => {
     if (!form.name.trim()) { setError('Введите имя персонажа'); return }
+
+    const numLevel = parseInt(form.level)
+    const numMaxHp = parseInt(form.max_hp)
+    const numHp = form.hp === '' ? 0 : parseInt(form.hp)
+    const numTempHp = form.temp_hp === '' ? 0 : parseInt(form.temp_hp)
+    const numAc = parseInt(form.ac)
+
+    if (!form.level || isNaN(numLevel) || numLevel < 1 || numLevel > 20) {
+      setError('Уровень: от 1 до 20'); return
+    }
+    if (!form.max_hp || isNaN(numMaxHp) || numMaxHp < 1) {
+      setError('Макс. HP: не менее 1'); return
+    }
+    if (isNaN(numHp) || numHp < 0) { setError('HP: не менее 0'); return }
+    if (isNaN(numTempHp) || numTempHp < 0) { setError('Врем. HP: не менее 0'); return }
+    if (!form.ac || isNaN(numAc) || numAc < 1) { setError('КД: не менее 1'); return }
+
+    for (const key of STAT_KEYS) {
+      const v = parseInt(form.stats[key])
+      if (!form.stats[key] || isNaN(v) || v < 1 || v > 30) {
+        setError('Характеристики: все значения от 1 до 30'); return
+      }
+    }
+
+    const numShieldBonus = form.stats.shield_bonus === '' ? 0 : parseInt(form.stats.shield_bonus)
+    if (isNaN(numShieldBonus) || numShieldBonus < 0) { setError('Бонус щита: не менее 0'); return }
+
     setSaving(true)
     setError('')
     try {
+      const body = {
+        ...form,
+        level: numLevel,
+        max_hp: numMaxHp,
+        hp: numHp,
+        temp_hp: numTempHp,
+        ac: numAc,
+        stats: {
+          strength: parseInt(form.stats.strength),
+          dexterity: parseInt(form.stats.dexterity),
+          constitution: parseInt(form.stats.constitution),
+          intelligence: parseInt(form.stats.intelligence),
+          wisdom: parseInt(form.stats.wisdom),
+          charisma: parseInt(form.stats.charisma),
+          shield_bonus: numShieldBonus,
+          speed: form.stats.speed,
+        },
+      }
       let saved: Character
       if (character) {
-        const { data } = await api.put<Character>(`/api/v1/characters/${character.id}`, form)
+        const { data } = await api.put<Character>(`/api/v1/characters/${character.id}`, body)
         saved = data
         updateCharacter(data)
       } else {
-        const { data } = await api.post<Character>(`/api/v1/rooms/${roomCode}/characters`, form)
+        const { data } = await api.post<Character>(`/api/v1/rooms/${roomCode}/characters`, body)
         saved = data
         addCharacter(data)
       }
@@ -257,7 +309,7 @@ function MainTab({
 }: {
   form: CharForm
   setField: <K extends keyof CharForm>(k: K, v: CharForm[K]) => void
-  setStat: (k: keyof StatsForm, v: number | boolean) => void
+  setStat: (k: keyof StatsForm, v: string) => void
 }) {
   return (
     <>
@@ -289,41 +341,37 @@ function MainTab({
           type="number" min={1} max={20}
           className={numCls}
           value={form.level}
-          onChange={(e) => setField('level', Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+          onChange={(e) => setField('level', e.target.value)}
         />
       </Field>
       <div className="grid grid-cols-3 gap-2">
         <Field label="Макс. HP">
           <input type="number" min={1} className={numCls} value={form.max_hp}
-            onChange={(e) => setField('max_hp', parseInt(e.target.value) || 1)} />
+            onChange={(e) => setField('max_hp', e.target.value)} />
         </Field>
         <Field label="HP">
           <input type="number" min={0} className={numCls} value={form.hp}
-            onChange={(e) => setField('hp', Math.max(0, parseInt(e.target.value) || 0))} />
+            onChange={(e) => setField('hp', e.target.value)} />
         </Field>
         <Field label="Врем. HP">
           <input type="number" min={0} className={numCls} value={form.temp_hp}
-            onChange={(e) => setField('temp_hp', Math.max(0, parseInt(e.target.value) || 0))} />
+            onChange={(e) => setField('temp_hp', e.target.value)} />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="КД">
+        <Field label="КД (база)">
           <input type="number" min={1} className={numCls} value={form.ac}
-            onChange={(e) => setField('ac', parseInt(e.target.value) || 10)} />
+            onChange={(e) => setField('ac', e.target.value)} />
         </Field>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-parchment/50 font-fantasy">Щит (+2 КД)</span>
-          <label className="flex items-center gap-2 cursor-pointer h-[30px]">
-            <input
-              type="checkbox"
-              checked={form.stats.has_shield}
-              onChange={(e) => setStat('has_shield', e.target.checked)}
-              className="accent-gold w-3.5 h-3.5"
-            />
-            <span className="text-xs text-parchment">Есть щит</span>
-          </label>
-        </div>
+        <Field label="Щит (бонус КД, 0 = нет)">
+          <input type="number" min={0} className={numCls} value={form.stats.shield_bonus}
+            onChange={(e) => setStat('shield_bonus', e.target.value)} />
+        </Field>
       </div>
+      <Field label="Скорость">
+        <input className={inputCls} value={form.stats.speed}
+          onChange={(e) => setStat('speed', e.target.value)} placeholder="30 фт." />
+      </Field>
     </>
   )
 }
@@ -333,23 +381,24 @@ function StatsTab({
   setStat,
 }: {
   stats: StatsForm
-  setStat: (k: keyof StatsForm, v: number | boolean) => void
+  setStat: (k: keyof StatsForm, v: string) => void
 }) {
   return (
     <div className="grid grid-cols-3 gap-3">
       {STAT_LABELS.map(({ key, short }) => {
-        const score = stats[key]
+        const raw = stats[key] as string
+        const numScore = parseInt(raw)
         return (
           <div key={key} className="bg-dark rounded border border-dark-border p-2 flex flex-col items-center gap-1">
             <span className="text-xs text-parchment/50 font-fantasy">{short}</span>
             <input
               type="number" min={1} max={30}
-              value={score}
-              onChange={(e) => setStat(key, parseInt(e.target.value) || 10)}
+              value={raw}
+              onChange={(e) => setStat(key, e.target.value)}
               className="w-16 text-center bg-transparent border-b border-dark-border text-parchment text-lg font-bold focus:outline-none focus:border-gold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
-            <span className={`text-xs font-mono ${Math.floor((score - 10) / 2) >= 0 ? 'text-green-400' : 'text-ember'}`}>
-              {modStr(score)}
+            <span className={`text-xs font-mono ${!isNaN(numScore) && Math.floor((numScore - 10) / 2) >= 0 ? 'text-green-400' : 'text-ember'}`}>
+              {modStr(raw)}
             </span>
           </div>
         )

@@ -47,13 +47,14 @@ type patchHPRequest struct {
 }
 
 type statsRaw struct {
-	Strength     int  `json:"strength"`
-	Dexterity    int  `json:"dexterity"`
-	Constitution int  `json:"constitution"`
-	Intelligence int  `json:"intelligence"`
-	Wisdom       int  `json:"wisdom"`
-	Charisma     int  `json:"charisma"`
-	HasShield    bool `json:"has_shield"`
+	Strength     int    `json:"strength"`
+	Dexterity    int    `json:"dexterity"`
+	Constitution int    `json:"constitution"`
+	Intelligence int    `json:"intelligence"`
+	Wisdom       int    `json:"wisdom"`
+	Charisma     int    `json:"charisma"`
+	ShieldBonus  int    `json:"shield_bonus"`
+	Speed        string `json:"speed"`
 }
 
 type statsEnriched struct {
@@ -107,10 +108,7 @@ func toResponse(c store.Character) characterResponse {
 		WisMod:   modifier(raw.Wisdom),
 		ChaMod:   modifier(raw.Charisma),
 	}
-	effectiveAC := c.AC
-	if raw.HasShield {
-		effectiveAC += 2
-	}
+	effectiveAC := c.AC + raw.ShieldBonus
 	return characterResponse{
 		ID:          c.ID.String(),
 		UserID:      c.UserID.String(),
