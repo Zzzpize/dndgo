@@ -14,6 +14,7 @@ export interface MapToken {
   disposition: 'friendly' | 'neutral' | 'hostile'
   current_hp?: number
   max_hp?: number
+  temp_hp: number
 }
 
 export interface NpcFolder {

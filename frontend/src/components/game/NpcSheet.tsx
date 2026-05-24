@@ -3,6 +3,14 @@
 import { useState } from 'react'
 import { NPC, MapToken } from '@/store/gameStore'
 
+function applyDelta(delta: number, currentHp: number, tempHp: number, maxHp: number) {
+  if (delta < 0) {
+    const absorbed = Math.min(-delta, tempHp)
+    return { current_hp: Math.max(0, currentHp - (-delta - absorbed)), temp_hp: tempHp - absorbed }
+  }
+  return { current_hp: Math.max(0, Math.min(maxHp, currentHp + delta)), temp_hp: tempHp }
+}
+
 interface Props {
   npc: NPC
   token: MapToken
@@ -61,15 +69,25 @@ function ActionBlock({ label, items }: { label: string; items: string[] }) {
 export function NpcSheet({ npc, token, sendMessage, role }: Props) {
   const currentHp = token.current_hp ?? npc.max_hp
   const maxHp = token.max_hp ?? npc.max_hp
+  const tempHp = token.temp_hp ?? 0
   const [tab, setTab] = useState<'combat' | 'stats'>('combat')
   const [hpDelta, setHpDelta] = useState('')
+  const [tempDelta, setTempDelta] = useState('')
   const [busy, setBusy] = useState(false)
 
   const applyHP = (delta: number) => {
     if (busy) return
     setBusy(true)
-    const next = Math.max(0, Math.min(maxHp, currentHp + delta))
-    sendMessage('TOKEN_UPDATE', { id: token.id, current_hp: next })
+    const { current_hp, temp_hp } = applyDelta(delta, currentHp, tempHp, maxHp)
+    sendMessage('TOKEN_UPDATE', { id: token.id, current_hp, temp_hp })
+    setTimeout(() => setBusy(false), 300)
+  }
+
+  const applyTempHP = (val: number) => {
+    if (busy) return
+    setBusy(true)
+    const next = Math.max(0, val)
+    sendMessage('TOKEN_UPDATE', { id: token.id, current_hp: currentHp, temp_hp: next })
     setTimeout(() => setBusy(false), 300)
   }
 
@@ -78,6 +96,13 @@ export function NpcSheet({ npc, token, sendMessage, role }: Props) {
     if (isNaN(n) || n === 0) return
     applyHP(n)
     setHpDelta('')
+  }
+
+  const handleTempHP = () => {
+    const n = parseInt(tempDelta, 10)
+    if (isNaN(n)) return
+    applyTempHP(n)
+    setTempDelta('')
   }
 
   const hpPct = Math.max(0, currentHp) / Math.max(maxHp, 1)
@@ -100,6 +125,9 @@ export function NpcSheet({ npc, token, sendMessage, role }: Props) {
         <div className="flex items-end gap-2">
           <span className="text-3xl font-bold text-parchment leading-none">{currentHp}</span>
           <span className="text-parchment/40 text-lg leading-none mb-0.5">/ {maxHp}</span>
+          {tempHp > 0 && (
+            <span className="ml-1 text-sm font-bold text-sky-400 leading-none mb-0.5">+{tempHp} вр.</span>
+          )}
         </div>
         <div className="w-full h-2 bg-dark-border rounded-full overflow-hidden">
           <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct * 100}%` }} />
@@ -133,6 +161,22 @@ export function NpcSheet({ npc, token, sendMessage, role }: Props) {
               <button
                 onClick={handleCustomHP}
                 className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors"
+              >
+                OK
+              </button>
+            </div>
+            <div className="flex gap-1 items-center">
+              <span className="text-xs text-parchment/40 shrink-0">Врем. HP</span>
+              <input
+                type="number"
+                value={tempDelta}
+                onChange={(e) => setTempDelta(e.target.value)}
+                placeholder={String(tempHp)}
+                className="flex-1 bg-dark border border-sky-900/40 rounded px-2 py-1 text-xs text-sky-300 placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                onClick={handleTempHP}
+                className="px-3 py-1 bg-sky-900/30 hover:bg-sky-900/50 border border-sky-900/40 rounded text-xs text-sky-300 transition-colors"
               >
                 OK
               </button>

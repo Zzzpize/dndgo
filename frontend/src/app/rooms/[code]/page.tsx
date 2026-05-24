@@ -279,6 +279,8 @@ export default function RoomPage() {
         <CharacterModal
           roomCode={code}
           character={editingChar}
+          sendMessage={sendMessage}
+          role={role}
           onClose={() => setEditingTokenId(null)}
           onSaved={() => setEditingTokenId(null)}
         />
@@ -288,6 +290,9 @@ export default function RoomPage() {
         <NpcModal
           roomCode={code}
           npc={editingNpc}
+          token={editingToken ?? undefined}
+          sendMessage={sendMessage}
+          role={role}
           onClose={() => setEditingTokenId(null)}
           onSaved={() => setEditingTokenId(null)}
         />

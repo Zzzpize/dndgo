@@ -2,7 +2,15 @@
 
 import { useState } from 'react'
 import api from '@/lib/api'
-import { NPC, useGameStore } from '@/store/gameStore'
+import { NPC, MapToken, useGameStore } from '@/store/gameStore'
+
+function applyDelta(delta: number, currentHp: number, tempHp: number, maxHp: number) {
+  if (delta < 0) {
+    const absorbed = Math.min(-delta, tempHp)
+    return { current_hp: Math.max(0, currentHp - (-delta - absorbed)), temp_hp: tempHp - absorbed }
+  }
+  return { current_hp: Math.max(0, Math.min(maxHp, currentHp + delta)), temp_hp: tempHp }
+}
 
 interface AbilityScores { str: string; dex: string; con: string; int: string; wis: string; cha: string }
 
@@ -125,6 +133,9 @@ const ABILITY_LABELS: { key: keyof AbilityScores; short: string }[] = [
 interface Props {
   roomCode: string
   npc?: NPC
+  token?: MapToken
+  sendMessage?: (type: string, payload?: unknown) => void
+  role?: 'dm' | 'player' | null
   onClose: () => void
   onSaved: (npc: NPC) => void
 }
@@ -150,12 +161,37 @@ function OptionalTextarea({ label, value, onChange, placeholder, rows = 3 }: {
   )
 }
 
-export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
+export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onSaved }: Props) {
   const addNpc = useGameStore((s) => s.addNpc)
   const updateNpc = useGameStore((s) => s.updateNpc)
   const [form, setForm] = useState<NpcForm>(() => npc ? fromNPC(npc) : defaultForm())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const currentHp = token?.current_hp ?? npc?.max_hp ?? 0
+  const maxHp = token?.max_hp ?? npc?.max_hp ?? 0
+  const tempHp = token?.temp_hp ?? 0
+  const [hpDelta, setHpDelta] = useState('')
+  const [tempInput, setTempInput] = useState('')
+  const [hpBusy, setHpBusy] = useState(false)
+
+  const applyHP = (delta: number) => {
+    if (!token || !sendMessage || hpBusy) return
+    setHpBusy(true)
+    const { current_hp, temp_hp } = applyDelta(delta, currentHp, tempHp, maxHp)
+    sendMessage('TOKEN_UPDATE', { id: token.id, current_hp, temp_hp })
+    setTimeout(() => setHpBusy(false), 300)
+  }
+
+  const applyTempHP = () => {
+    if (!token || !sendMessage || hpBusy) return
+    const n = parseInt(tempInput, 10)
+    if (isNaN(n) || n < 0) return
+    setHpBusy(true)
+    sendMessage('TOKEN_UPDATE', { id: token.id, current_hp: currentHp, temp_hp: n })
+    setTempInput('')
+    setTimeout(() => setHpBusy(false), 300)
+  }
 
   const setField = <K extends keyof NpcForm>(key: K, value: NpcForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -234,6 +270,17 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
         saved = data
         addNpc(data)
       }
+      if (token && sendMessage) {
+        const clampedHp = Math.min(token.current_hp ?? numMaxHp, numMaxHp)
+        sendMessage('TOKEN_EDIT', {
+          id: token.id,
+          name: token.name,
+          disposition: token.disposition,
+          max_hp: numMaxHp,
+          current_hp: clampedHp,
+          temp_hp: token.temp_hp,
+        })
+      }
       onSaved(saved)
     } catch {
       setError('Ошибка сохранения')
@@ -254,7 +301,68 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-          {/* Имя + диспозиция */}
+          {token && role === 'dm' && (
+            <div className="bg-dark rounded border border-dark-border p-3 flex flex-col gap-2">
+              <p className="text-xs text-parchment/50 font-fantasy">Текущее состояние</p>
+              <div className="flex items-end gap-2">
+                <span className="text-2xl font-bold text-parchment leading-none">{currentHp}</span>
+                <span className="text-parchment/40 text-base leading-none mb-0.5">/ {maxHp}</span>
+                {tempHp > 0 && (
+                  <span className="ml-1 text-sm font-bold text-sky-400 leading-none mb-0.5">+{tempHp} вр.</span>
+                )}
+              </div>
+              <div className="flex gap-1">
+                {[-5, -1, 1, 5].map((d) => (
+                  <button
+                    key={d}
+                    disabled={hpBusy}
+                    onClick={() => applyHP(d)}
+                    className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
+                      d < 0
+                        ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
+                        : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
+                    }`}
+                  >
+                    {d > 0 ? `+${d}` : d}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                <input
+                  type="number"
+                  value={hpDelta}
+                  onChange={(e) => setHpDelta(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') } }}
+                  placeholder="±delta"
+                  className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <button
+                  onClick={() => { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') }}
+                  className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors"
+                >
+                  OK
+                </button>
+              </div>
+              <div className="flex gap-1 items-center">
+                <span className="text-xs text-parchment/40 shrink-0">Врем. HP</span>
+                <input
+                  type="number"
+                  value={tempInput}
+                  onChange={(e) => setTempInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') applyTempHP() }}
+                  placeholder={String(tempHp)}
+                  className="flex-1 bg-dark border border-sky-900/40 rounded px-2 py-1 text-xs text-sky-300 placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <button
+                  onClick={applyTempHP}
+                  className="px-3 py-1 bg-sky-900/30 hover:bg-sky-900/50 border border-sky-900/40 rounded text-xs text-sky-300 transition-colors"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <div className="flex-1 flex flex-col gap-1">
               <label className="text-xs text-parchment/50 font-fantasy">Имя *</label>
@@ -274,13 +382,11 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          {/* Тип */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-parchment/50 font-fantasy">Тип / мировоззрение</label>
             <input className={inputCls} value={form.type_alignment} onChange={(e) => setField('type_alignment', e.target.value)} placeholder="Малый гуманоид, нейтрально-злой" />
           </div>
 
-          {/* КД + HP + Скорость */}
           <div className="grid grid-cols-3 gap-2">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-parchment/50 font-fantasy">КД</label>
@@ -297,7 +403,6 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          {/* Характеристики */}
           <div>
             <p className="text-xs text-parchment/50 font-fantasy mb-2">Характеристики</p>
             <div className="grid grid-cols-6 gap-1.5">
@@ -322,7 +427,6 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          {/* Действия */}
           <SectionLabel>Действия</SectionLabel>
           <OptionalTextarea label="Действия (каждое с новой строки)" value={form.actionsText}
             onChange={(v) => setField('actionsText', v)} rows={4}
@@ -340,7 +444,6 @@ export function NpcModal({ roomCode, npc, onClose, onSaved }: Props) {
           <OptionalTextarea label="Региональные эффекты" value={form.regionalEffectsText}
             onChange={(v) => setField('regionalEffectsText', v)} />
 
-          {/* Дополнительные характеристики */}
           <SectionLabel>Дополнительно</SectionLabel>
           <OptionalTextarea label="Особенности" value={form.features}
             onChange={(v) => setField('features', v)} rows={3}

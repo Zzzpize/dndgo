@@ -1,0 +1,1 @@
+ALTER TABLE map_tokens DROP COLUMN IF EXISTS temp_hp;

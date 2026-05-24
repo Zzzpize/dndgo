@@ -438,11 +438,12 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		var p struct {
 			ID        uuid.UUID `json:"id"`
 			CurrentHP *int      `json:"current_hp"`
+			TempHP    int       `json:"temp_hp"`
 		}
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
 			return
 		}
-		token, err := h.store.UpdateTokenHP(ctx, p.ID, p.CurrentHP)
+		token, err := h.store.UpdateTokenHP(ctx, p.ID, p.CurrentHP, p.TempHP)
 		if err != nil {
 			log.Printf("hub: update token hp: %v", err)
 			return
@@ -459,11 +460,12 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			Disposition string    `json:"disposition"`
 			MaxHP       *int      `json:"max_hp"`
 			CurrentHP   *int      `json:"current_hp"`
+			TempHP      int       `json:"temp_hp"`
 		}
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
 			return
 		}
-		token, err := h.store.UpdateToken(ctx, p.ID, p.Name, p.Disposition, p.MaxHP, p.CurrentHP)
+		token, err := h.store.UpdateToken(ctx, p.ID, p.Name, p.Disposition, p.MaxHP, p.CurrentHP, p.TempHP)
 		if err != nil {
 			log.Printf("hub: edit token: %v", err)
 			return

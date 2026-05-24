@@ -23,10 +23,10 @@ const STAT_LABELS: Array<[keyof NonNullable<Character['stats']>, string, keyof N
 export function CharacterSheet({ character, sendMessage }: Props) {
   const [tab, setTab] = useState<Tab>('combat')
   const [hpDelta, setHpDelta] = useState('')
+  const [tempInput, setTempInput] = useState('')
   const [saving, setSaving] = useState(false)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
   const role = useGameStore((s) => s.role)
-  // Reset tab when character changes
   useEffect(() => { setTab('combat') }, [character.id])
 
   const applyHP = async (delta: number) => {
@@ -48,9 +48,26 @@ export function CharacterSheet({ character, sendMessage }: Props) {
     setHpDelta('')
   }
 
+  const applyTempHP = async () => {
+    const n = parseInt(tempInput, 10)
+    if (isNaN(n) || n < 0 || saving) return
+    setSaving(true)
+    try {
+      const { data } = await api.patch(`/api/v1/characters/${character.id}/hp`, { delta: 0, temp_hp: n })
+      updateCharacter(data)
+      sendMessage?.('CHARACTER_UPDATE', data)
+      setTempInput('')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const hpPct = Math.max(0, character.hp) / Math.max(character.max_hp, 1)
+  const hpColor = hpPct > 0.5 ? 'bg-green-600' : hpPct > 0.25 ? 'bg-yellow-500' : 'bg-ember'
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'combat', label: 'Бой' },
-    { key: 'stats', label: 'Стат' },
+    { key: 'stats', label: 'Характеристики' },
     { key: 'spells', label: 'Заклинания' },
     { key: 'inventory', label: 'Инвентарь' },
   ]
@@ -60,70 +77,26 @@ export function CharacterSheet({ character, sendMessage }: Props) {
       <div className="px-3 py-3 border-b border-dark-border">
         <p className="font-fantasy text-gold-light text-base leading-tight">{character.name}</p>
         <p className="text-parchment/50 text-xs mt-0.5">
-          {[
-            character.race, character.subrace, character.class, character.subclass,
-            `${character.level} ур.`
-          ].filter(Boolean).join(' • ')}
+          {[character.race, character.subrace, character.class, character.subclass, `${character.level} ур.`]
+            .filter(Boolean).join(' • ')}
         </p>
       </div>
 
-      <div className="flex border-b border-dark-border">
-        {tabs.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`flex-1 py-1.5 text-xs font-fantasy transition-colors ${
-              tab === key
-                ? 'text-gold-light border-b-2 border-gold'
-                : 'text-parchment/40 hover:text-parchment/70'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="p-3">
-        {tab === 'combat' && (
-          <CombatTab character={character} hpDelta={hpDelta} setHpDelta={setHpDelta} saving={saving} applyHP={applyHP} handleCustomHP={handleCustomHP} isDM={role === 'dm'} />
-        )}
-        {tab === 'stats' && <StatsTab character={character} />}
-        {tab === 'spells' && <SpellsTab character={character} />}
-        {tab === 'inventory' && <InventoryTab character={character} />}
-      </div>
-    </div>
-  )
-}
-
-function CombatTab({ character, hpDelta, setHpDelta, saving, applyHP, handleCustomHP, isDM }: {
-  character: Character
-  hpDelta: string
-  setHpDelta: (v: string) => void
-  saving: boolean
-  applyHP: (d: number) => Promise<void>
-  handleCustomHP: () => Promise<void>
-  isDM: boolean
-}) {
-  const hpPct = Math.max(0, character.hp) / Math.max(character.max_hp, 1)
-  const hpColor = hpPct > 0.5 ? 'bg-green-600' : hpPct > 0.25 ? 'bg-yellow-500' : 'bg-ember'
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="bg-dark rounded p-3 border border-dark-border">
-        <p className="text-parchment/50 text-xs mb-1 font-fantasy">Хиты</p>
-        <div className="flex items-end gap-2 mb-2">
+      <div className="p-3 border-b border-dark-border flex flex-col gap-2">
+        <p className="text-parchment/50 text-xs font-fantasy">Хиты</p>
+        <div className="flex items-end gap-2">
           <span className="text-3xl font-bold text-parchment leading-none">{character.hp}</span>
           <span className="text-parchment/40 text-lg leading-none mb-0.5">/ {character.max_hp}</span>
+          {character.temp_hp > 0 && (
+            <span className="ml-1 text-sm font-bold text-sky-400 leading-none mb-0.5">+{character.temp_hp} вр.</span>
+          )}
         </div>
-        <div className="w-full h-2 bg-dark-border rounded-full overflow-hidden mb-3">
+        <div className="w-full h-2 bg-dark-border rounded-full overflow-hidden">
           <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct * 100}%` }} />
         </div>
-        {character.temp_hp > 0 && (
-          <p className="text-xs text-blue-300 mb-2">+{character.temp_hp} врем. HP</p>
-        )}
-        {isDM && (
+        {role === 'dm' && (
           <>
-            <div className="flex gap-1 mb-2">
+            <div className="flex gap-1">
               {[-5, -1, 1, 5].map((d) => (
                 <button
                   key={d}
@@ -144,6 +117,7 @@ function CombatTab({ character, hpDelta, setHpDelta, saving, applyHP, handleCust
                 type="number"
                 value={hpDelta}
                 onChange={(e) => setHpDelta(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCustomHP() }}
                 placeholder="±delta"
                 className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
@@ -155,24 +129,69 @@ function CombatTab({ character, hpDelta, setHpDelta, saving, applyHP, handleCust
                 OK
               </button>
             </div>
+            <div className="flex gap-1 items-center">
+              <span className="text-xs text-parchment/40 shrink-0">Врем. HP</span>
+              <input
+                type="number"
+                value={tempInput}
+                onChange={(e) => setTempInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyTempHP() }}
+                placeholder={String(character.temp_hp)}
+                className="flex-1 bg-dark border border-sky-900/40 rounded px-2 py-1 text-xs text-sky-300 placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                disabled={saving}
+                onClick={applyTempHP}
+                className="px-3 py-1 bg-sky-900/30 hover:bg-sky-900/50 border border-sky-900/40 rounded text-xs text-sky-300 transition-colors disabled:opacity-50"
+              >
+                OK
+              </button>
+            </div>
           </>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-dark rounded p-3 border border-dark-border text-center">
-          <p className="text-parchment/50 text-xs font-fantasy mb-1">КД</p>
-          <p className="text-2xl font-bold text-parchment">{character.effective_ac}</p>
-          {(character.stats?.shield_bonus ?? 0) > 0 && (
-            <p className="text-[10px] text-parchment/60 mt-0.5">(щит: +{character.stats!.shield_bonus})</p>
-          )}
-        </div>
-        <div className="bg-dark rounded p-3 border border-dark-border text-center">
-          <p className="text-parchment/50 text-xs font-fantasy mb-1">Скорость</p>
-          <p className="text-xl font-bold text-parchment leading-snug break-words">
-            {character.stats?.speed || '—'}
-          </p>
-        </div>
+      <div className="flex border-b border-dark-border">
+        {tabs.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex-1 py-2 text-xs font-fantasy transition-colors ${
+              tab === key
+                ? 'text-gold-light border-b-2 border-gold-light -mb-px'
+                : 'text-parchment/40 hover:text-parchment/70'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-3">
+        {tab === 'combat' && <CombatTab character={character} />}
+        {tab === 'stats' && <StatsTab character={character} />}
+        {tab === 'spells' && <SpellsTab character={character} />}
+        {tab === 'inventory' && <InventoryTab character={character} />}
+      </div>
+    </div>
+  )
+}
+
+function CombatTab({ character }: { character: Character }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div className="bg-dark rounded p-2 border border-dark-border text-center">
+        <p className="text-parchment/50 text-xs font-fantasy mb-1">КД</p>
+        <p className="text-xl font-bold text-parchment">{character.effective_ac}</p>
+        {(character.stats?.shield_bonus ?? 0) > 0 && (
+          <p className="text-[10px] text-parchment/60 mt-0.5">(щит: +{character.stats!.shield_bonus})</p>
+        )}
+      </div>
+      <div className="bg-dark rounded p-2 border border-dark-border text-center">
+        <p className="text-parchment/50 text-xs font-fantasy mb-1">Скорость</p>
+        <p className="text-xs text-parchment leading-tight mt-1 break-words">
+          {character.stats?.speed || '—'}
+        </p>
       </div>
     </div>
   )
@@ -185,15 +204,15 @@ function StatsTab({ character }: { character: Character }) {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-6 gap-1">
       {STAT_LABELS.map(([key, label, modKey]) => {
         const score = stats[key] as number
         const mod = stats[modKey] as number
         return (
-          <div key={key} className="bg-dark rounded border border-dark-border p-2 text-center">
-            <p className="text-parchment/50 text-xs font-fantasy mb-1">{label}</p>
-            <p className="text-xl font-bold text-parchment leading-none">{score}</p>
-            <p className={`text-xs mt-0.5 ${mod >= 0 ? 'text-green-400' : 'text-ember'}`}>
+          <div key={key} className="bg-dark rounded border border-dark-border p-1 text-center">
+            <p className="text-parchment/50 text-xs font-fantasy">{label}</p>
+            <p className="text-base font-bold text-parchment">{score}</p>
+            <p className={`text-xs ${mod >= 0 ? 'text-green-400' : 'text-ember'}`}>
               {mod >= 0 ? `+${mod}` : mod}
             </p>
           </div>

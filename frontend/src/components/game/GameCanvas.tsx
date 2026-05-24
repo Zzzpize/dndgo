@@ -341,6 +341,13 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       const canDrag = role === 'dm' || (token.token_type === 'pc' && char?.user_id === myUserId)
       const color = token.token_type === 'pc' ? PC_COLOR : (DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral)
 
+      const hpPct = char
+        ? Math.max(0, char.hp) / Math.max(char.max_hp, 1)
+        : (token.current_hp !== undefined && token.max_hp != null && token.max_hp > 0)
+          ? Math.max(0, token.current_hp) / token.max_hp
+          : null
+      const isDead = hpPct === 0
+
       const group = new Konva.Group({ x, y, draggable: canDrag })
 
       if (isSelected) {
@@ -350,12 +357,10 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         group.add(new Konva.Circle({ radius: tokenRadius + 4, stroke: '#d4af70', strokeWidth: 3, fill: 'transparent' }))
       }
       group.add(new Konva.Circle({ radius: tokenRadius, fill: color, stroke: '#1a1814', strokeWidth: 1.5 }))
+      if (isDead) {
+        group.add(new Konva.Circle({ radius: tokenRadius, fill: 'rgba(55,55,55,0.75)', strokeWidth: 0 }))
+      }
 
-      const hpPct = char
-        ? Math.max(0, char.hp) / Math.max(char.max_hp, 1)
-        : (token.current_hp !== undefined && token.max_hp != null && token.max_hp > 0)
-          ? Math.max(0, token.current_hp) / token.max_hp
-          : null
       if (hpPct !== null) {
         const hpColor = hpPct > 0.5 ? '#27ae60' : hpPct > 0.25 ? '#f39c12' : '#c0392b'
         const bW = tokenRadius * 2
@@ -533,7 +538,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         npcId = npc.id
         maxHp = npc.max_hp
         currentHp = npc.max_hp
-      } catch { /* fallback: place as basic token */ }
+      } catch { }
     }
 
     sendMessageRef.current('TOKEN_CREATE', {

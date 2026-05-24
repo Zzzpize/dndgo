@@ -114,6 +114,8 @@ const modStr = (raw: string | number) => {
 interface Props {
   roomCode: string
   character?: Character
+  sendMessage?: (type: string, payload?: unknown) => void
+  role?: 'dm' | 'player' | null
   onClose: () => void
   onSaved: (char: Character) => void
 }
@@ -140,7 +142,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 const STAT_KEYS = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const
 
-export function CharacterModal({ roomCode, character, onClose, onSaved }: Props) {
+export function CharacterModal({ roomCode, character, sendMessage, role, onClose, onSaved }: Props) {
   const addCharacter = useGameStore((s) => s.addCharacter)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
   const [tab, setTab] = useState<Tab>('main')
@@ -149,6 +151,37 @@ export function CharacterModal({ roomCode, character, onClose, onSaved }: Props)
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const [hpDelta, setHpDelta] = useState('')
+  const [tempInput, setTempInput] = useState('')
+  const [hpBusy, setHpBusy] = useState(false)
+
+  const applyHP = async (delta: number) => {
+    if (!character || hpBusy) return
+    setHpBusy(true)
+    try {
+      const { data } = await api.patch(`/api/v1/characters/${character.id}/hp`, { delta })
+      updateCharacter(data)
+      sendMessage?.('CHARACTER_UPDATE', data)
+    } finally {
+      setHpBusy(false)
+    }
+  }
+
+  const applyTempHP = async () => {
+    if (!character || hpBusy) return
+    const n = parseInt(tempInput, 10)
+    if (isNaN(n) || n < 0) return
+    setHpBusy(true)
+    try {
+      const { data } = await api.patch(`/api/v1/characters/${character.id}/hp`, { delta: 0, temp_hp: n })
+      updateCharacter(data)
+      sendMessage?.('CHARACTER_UPDATE', data)
+      setTempInput('')
+    } finally {
+      setHpBusy(false)
+    }
+  }
 
   const setField = <K extends keyof CharForm>(key: K, value: CharForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -161,8 +194,10 @@ export function CharacterModal({ roomCode, character, onClose, onSaved }: Props)
 
     const numLevel = parseInt(form.level)
     const numMaxHp = parseInt(form.max_hp)
-    const numHp = form.hp === '' ? 0 : parseInt(form.hp)
-    const numTempHp = form.temp_hp === '' ? 0 : parseInt(form.temp_hp)
+    const hpSource = (character && role === 'dm') ? character.hp : (form.hp === '' ? 0 : parseInt(form.hp))
+    const numHp = Math.min(hpSource, numMaxHp)
+    const tempSource = (character && role === 'dm') ? character.temp_hp : (form.temp_hp === '' ? 0 : parseInt(form.temp_hp))
+    const numTempHp = isNaN(tempSource) ? 0 : tempSource
     const numAc = parseInt(form.ac)
 
     if (!form.level || isNaN(numLevel) || numLevel < 1 || numLevel > 20) {
@@ -245,6 +280,70 @@ export function CharacterModal({ roomCode, character, onClose, onSaved }: Props)
           </button>
         </div>
 
+        {character && role === 'dm' && (
+          <div className="mx-4 mt-3 mb-1 bg-dark rounded border border-dark-border p-3 flex flex-col gap-2 shrink-0">
+            <p className="text-xs text-parchment/50 font-fantasy">Текущее состояние</p>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-bold text-parchment leading-none">{character.hp}</span>
+              <span className="text-parchment/40 text-base leading-none mb-0.5">/ {character.max_hp}</span>
+              {character.temp_hp > 0 && (
+                <span className="ml-1 text-sm font-bold text-sky-400 leading-none mb-0.5">+{character.temp_hp} вр.</span>
+              )}
+            </div>
+            <div className="flex gap-1">
+              {[-5, -1, 1, 5].map((d) => (
+                <button
+                  key={d}
+                  disabled={hpBusy}
+                  onClick={() => applyHP(d)}
+                  className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
+                    d < 0
+                      ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
+                      : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
+                  }`}
+                >
+                  {d > 0 ? `+${d}` : d}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              <input
+                type="number"
+                value={hpDelta}
+                onChange={(e) => setHpDelta(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') } }}
+                placeholder="±delta"
+                className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                onClick={() => { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') }}
+                disabled={hpBusy}
+                className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors disabled:opacity-50"
+              >
+                OK
+              </button>
+            </div>
+            <div className="flex gap-1 items-center">
+              <span className="text-xs text-parchment/40 shrink-0">Врем. HP</span>
+              <input
+                type="number"
+                value={tempInput}
+                onChange={(e) => setTempInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyTempHP() }}
+                placeholder={String(character.temp_hp)}
+                className="flex-1 bg-dark border border-sky-900/40 rounded px-2 py-1 text-xs text-sky-300 placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                onClick={applyTempHP}
+                disabled={hpBusy}
+                className="px-3 py-1 bg-sky-900/30 hover:bg-sky-900/50 border border-sky-900/40 rounded text-xs text-sky-300 transition-colors disabled:opacity-50"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex border-b border-dark-border shrink-0">
           {TABS.map(({ key, label }) => (
             <button
@@ -262,7 +361,7 @@ export function CharacterModal({ roomCode, character, onClose, onSaved }: Props)
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-          {tab === 'main' && <MainTab form={form} setField={setField} setStat={setStat} />}
+          {tab === 'main' && <MainTab form={form} setField={setField} setStat={setStat} hideHpFields={!!(character && role === 'dm')} />}
           {tab === 'stats' && <StatsTab stats={form.stats} setStat={setStat} />}
           {tab === 'combat' && <CombatTab form={form} setField={setField} />}
           {tab === 'abilities' && <AbilitiesTab form={form} setField={setField} />}
@@ -306,10 +405,12 @@ function MainTab({
   form,
   setField,
   setStat,
+  hideHpFields = false,
 }: {
   form: CharForm
   setField: <K extends keyof CharForm>(k: K, v: CharForm[K]) => void
   setStat: (k: keyof StatsForm, v: string) => void
+  hideHpFields?: boolean
 }) {
   return (
     <>
@@ -344,19 +445,23 @@ function MainTab({
           onChange={(e) => setField('level', e.target.value)}
         />
       </Field>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid gap-2 ${hideHpFields ? 'grid-cols-1' : 'grid-cols-3'}`}>
         <Field label="Макс. HP">
           <input type="number" min={1} className={numCls} value={form.max_hp}
             onChange={(e) => setField('max_hp', e.target.value)} />
         </Field>
-        <Field label="HP">
-          <input type="number" min={0} className={numCls} value={form.hp}
-            onChange={(e) => setField('hp', e.target.value)} />
-        </Field>
-        <Field label="Врем. HP">
-          <input type="number" min={0} className={numCls} value={form.temp_hp}
-            onChange={(e) => setField('temp_hp', e.target.value)} />
-        </Field>
+        {!hideHpFields && (
+          <>
+            <Field label="HP">
+              <input type="number" min={0} className={numCls} value={form.hp}
+                onChange={(e) => setField('hp', e.target.value)} />
+            </Field>
+            <Field label="Врем. HP">
+              <input type="number" min={0} className={numCls} value={form.temp_hp}
+                onChange={(e) => setField('temp_hp', e.target.value)} />
+            </Field>
+          </>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label="КД (база)">

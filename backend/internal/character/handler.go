@@ -43,7 +43,8 @@ type characterRequest struct {
 }
 
 type patchHPRequest struct {
-	Delta int `json:"delta"`
+	Delta  int  `json:"delta"`
+	TempHP *int `json:"temp_hp,omitempty"`
 }
 
 type statsRaw struct {
@@ -346,7 +347,7 @@ func (h *Handler) PatchHP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.store.UpdateCharacterHP(r.Context(), id, req.Delta)
+	updated, err := h.store.UpdateCharacterHP(r.Context(), id, req.Delta, req.TempHP)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
 		return

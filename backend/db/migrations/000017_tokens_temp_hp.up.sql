@@ -1,0 +1,1 @@
+ALTER TABLE map_tokens ADD COLUMN temp_hp INT NOT NULL DEFAULT 0;
