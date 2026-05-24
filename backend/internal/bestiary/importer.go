@@ -2,6 +2,7 @@ package bestiary
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +12,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+//go:embed seed.sql
+var seedSQL []byte
 
 type monsterJSON struct {
 	NameRu           string          `json:"name_ru"`
@@ -42,11 +46,11 @@ func MaybeImport(ctx context.Context, pool *pgxpool.Pool, bestiaryPath string) e
 
 	monsters, err := loadFromDir(bestiaryPath)
 	if err != nil {
-		return err
+		log.Printf("bestiary: json dir unavailable (%v), falling back to embedded seed", err)
 	}
 	if len(monsters) == 0 {
-		log.Printf("bestiary: no .json files found in %s", bestiaryPath)
-		return nil
+		log.Printf("bestiary: no .json files found, importing from embedded seed...")
+		return runSeed(ctx, pool)
 	}
 
 	seen := make(map[string]bool, len(monsters))
@@ -97,6 +101,21 @@ func MaybeImport(ctx context.Context, pool *pgxpool.Pool, bestiaryPath string) e
 	}
 
 	log.Printf("bestiary: imported %d monsters", n)
+	return nil
+}
+
+func runSeed(ctx context.Context, pool *pgxpool.Pool) error {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire conn for seed: %w", err)
+	}
+	defer conn.Release()
+
+	mrr := conn.Conn().PgConn().Exec(ctx, string(seedSQL))
+	if err := mrr.Close(); err != nil {
+		return fmt.Errorf("run seed: %w", err)
+	}
+	log.Printf("bestiary: embedded seed imported successfully")
 	return nil
 }
 
