@@ -1,0 +1,1 @@
+ALTER TABLE characters ADD COLUMN player_active BOOLEAN NOT NULL DEFAULT true;

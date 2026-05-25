@@ -277,6 +277,84 @@ func (h *Handler) RenameRoom(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, map[string]string{"name": req.Name})
 }
 
+func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
+	claims, _ := auth.ClaimsFromContext(r.Context())
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	code := chi.URLParam(r, "code")
+	room, role, err := h.store.GetRoomMembership(r.Context(), code, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusForbidden, "room not found or access denied", "ERR_FORBIDDEN")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	if role != "dm" {
+		httputil.Error(w, http.StatusForbidden, "only the DM can view settings", "ERR_FORBIDDEN")
+		return
+	}
+
+	gs, err := h.store.GetGameState(r.Context(), room.ID)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, store.RoomSettings{
+		PlayerCanMoveToken: gs.PlayerCanMoveToken,
+		PlayerCanRevealFog: gs.PlayerCanRevealFog,
+		PlayerCanEditToken: gs.PlayerCanEditToken,
+		PlayerCanEditHP:    gs.PlayerCanEditHP,
+		PlayerCanEditSheet: gs.PlayerCanEditSheet,
+		PlayersSeesDMRolls: gs.PlayersSeesDMRolls,
+		PlayerCanRollDice:  gs.PlayerCanRollDice,
+	})
+}
+
+func (h *Handler) PatchSettings(w http.ResponseWriter, r *http.Request) {
+	claims, _ := auth.ClaimsFromContext(r.Context())
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	code := chi.URLParam(r, "code")
+	room, role, err := h.store.GetRoomMembership(r.Context(), code, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusForbidden, "room not found or access denied", "ERR_FORBIDDEN")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	if role != "dm" {
+		httputil.Error(w, http.StatusForbidden, "only the DM can update settings", "ERR_FORBIDDEN")
+		return
+	}
+
+	var settings store.RoomSettings
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid body", "ERR_VALIDATION")
+		return
+	}
+
+	if err := h.store.UpdateRoomSettings(r.Context(), room.ID, settings); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	h.broadcaster.BroadcastToRoomByCode(code, "SETTINGS_UPDATE", settings)
+	httputil.JSON(w, http.StatusOK, settings)
+}
+
 func (h *Handler) LeaveRoom(w http.ResponseWriter, r *http.Request) {
 	claims, _ := auth.ClaimsFromContext(r.Context())
 	userID, err := uuid.Parse(claims.Subject)

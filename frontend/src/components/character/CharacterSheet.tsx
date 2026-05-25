@@ -29,7 +29,14 @@ export function CharacterSheet({ character, sendMessage }: Props) {
   const updateCharacter = useGameStore((s) => s.updateCharacter)
   const role = useGameStore((s) => s.role)
   const myUserId = useAuthStore((s) => s.user?.id)
-  const canEditHP = role === 'dm' || character.user_id === myUserId
+  const gameState = useGameStore((s) => s.gameState)
+  const isOwner = character.user_id === myUserId
+  const canEditHP = role === 'dm' || (
+    isOwner &&
+    (character.player_active ?? true) &&
+    (gameState?.player_can_edit_token ?? true) &&
+    (gameState?.player_can_edit_hp ?? true)
+  )
   useEffect(() => { setTab('combat') }, [character.id])
 
   const applyHP = async (delta: number) => {
@@ -154,7 +161,7 @@ export function CharacterSheet({ character, sendMessage }: Props) {
         )}
       </div>
 
-      <div className="flex border-b border-dark-border">
+<div className="flex border-b border-dark-border">
         {tabs.map(({ key, label }) => (
           <button
             key={key}

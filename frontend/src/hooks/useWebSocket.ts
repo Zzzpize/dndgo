@@ -115,6 +115,9 @@ function dispatch(msg: WsMsg) {
       s.setGrid(p.grid_enabled, p.grid_size)
       break
     }
+    case 'SETTINGS_UPDATE':
+      s.setSettings(msg.payload as Parameters<typeof s.setSettings>[0])
+      break
     case 'FOG_REVEAL':
       s.addFogPaths(msg.payload as Parameters<typeof s.addFogPaths>[0])
       break

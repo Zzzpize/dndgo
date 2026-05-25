@@ -139,6 +139,8 @@ func main() {
 			r.Post("/{code}/npc-folders", npcHandler.CreateFolder)
 			r.Get("/{code}/npc-folders", npcHandler.ListFolders)
 			r.Get("/{code}/events", gameHandler.ListEvents)
+			r.Get("/{code}/settings", gameHandler.GetSettings)
+			r.Patch("/{code}/settings", gameHandler.PatchSettings)
 		})
 
 		r.Route("/npcs", func(r chi.Router) {
@@ -163,6 +165,7 @@ func main() {
 			r.Get("/{id}", charHandler.Get)
 			r.Put("/{id}", charHandler.Update)
 			r.Patch("/{id}/hp", charHandler.PatchHP)
+			r.Patch("/{id}/active", charHandler.SetActive)
 			r.Delete("/{id}", charHandler.Delete)
 		})
 

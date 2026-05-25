@@ -97,7 +97,7 @@ export default function RoomPage() {
     return s.npcs.find((n) => n.id === token.npc_id) ?? null
   })
 
-  const myChar = useGameStore((s) => s.characters.find((c) => c.user_id === user?.id) ?? null)
+  const myChar = useGameStore((s) => s.characters.find((c) => c.user_id === user?.id && (c.player_active ?? true)) ?? null)
 
   const editingTokenId = useGameStore((s) => s.editingTokenId)
   const setEditingTokenId = useGameStore((s) => s.setEditingTokenId)

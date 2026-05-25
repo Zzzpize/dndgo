@@ -73,6 +73,13 @@ export interface GameStateData {
   fog_paths: FogPath[]
   fog_cleared: boolean
   initiative_order: InitiativeEntry[]
+  player_can_move_token?: boolean
+  player_can_reveal_fog?: boolean
+  player_can_edit_token?: boolean
+  player_can_edit_hp?: boolean
+  player_can_edit_sheet?: boolean
+  players_see_dm_rolls?: boolean
+  player_can_roll_dice?: boolean
 }
 
 export interface DiceLogEntry {
@@ -118,6 +125,7 @@ export interface Character {
   ac: number
   temp_hp: number
   effective_ac: number
+  player_active: boolean
   stats: CharacterStats | null
   weapons: unknown
   spell_slots: unknown
@@ -168,6 +176,7 @@ interface GameStore {
   moveToken: (id: string, rel_x: number, rel_y: number) => void
   removeToken: (id: string) => void
   setGrid: (enabled: boolean, size: number) => void
+  setSettings: (s: Partial<GameStateData>) => void
   setFogState: (fogCleared: boolean, paths: FogPath[]) => void
   addFogPaths: (paths: FogPath[]) => void
   setInitiativeOrder: (order: InitiativeEntry[]) => void
@@ -253,6 +262,11 @@ export const useGameStore = create<GameStore>((set) => ({
   setGrid: (enabled, size) =>
     set((s) => ({
       gameState: s.gameState ? { ...s.gameState, grid_enabled: enabled, grid_size: size } : s.gameState,
+    })),
+
+  setSettings: (settings) =>
+    set((s) => ({
+      gameState: s.gameState ? { ...s.gameState, ...settings } : s.gameState,
     })),
 
   setFogState: (fogCleared, paths) =>

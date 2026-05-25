@@ -146,8 +146,21 @@ const STAT_KEYS = ['strength', 'dexterity', 'constitution', 'intelligence', 'wis
 export function CharacterModal({ roomCode, character, sendMessage, role, onClose, onSaved }: Props) {
   const addCharacter = useGameStore((s) => s.addCharacter)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
+  const gameState = useGameStore((s) => s.gameState)
   const myUserId = useAuthStore((s) => s.user?.id)
-  const canEditHP = role === 'dm' || (!!character && character.user_id === myUserId)
+  const isOwner = !!character && character.user_id === myUserId
+  const canEditHP = role === 'dm' || (
+    isOwner &&
+    (character?.player_active ?? true) &&
+    (gameState?.player_can_edit_token ?? true) &&
+    (gameState?.player_can_edit_hp ?? true)
+  )
+  const canEditSheet = role === 'dm' || (
+    isOwner &&
+    (character?.player_active ?? true) &&
+    (gameState?.player_can_edit_token ?? true) &&
+    (gameState?.player_can_edit_sheet ?? true)
+  )
   const [tab, setTab] = useState<Tab>('main')
   const [form, setForm] = useState<CharForm>(() =>
     character ? fromCharacter(character) : defaultForm()
@@ -158,6 +171,19 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
   const [hpDelta, setHpDelta] = useState('')
   const [tempInput, setTempInput] = useState('')
   const [hpBusy, setHpBusy] = useState(false)
+
+  const toggleActive = async () => {
+    if (!character || saving) return
+    setSaving(true)
+    try {
+      const { data } = await api.patch(`/api/v1/characters/${character.id}/active`, { active: !character.player_active })
+      updateCharacter(data)
+      sendMessage?.('CHARACTER_UPDATE', data)
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const applyHP = async (delta: number) => {
     if (!character || hpBusy) return
@@ -379,6 +405,18 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
 
         {error && <p className="px-4 pb-1 text-ember text-xs">{error}</p>}
 
+        {isOwner && (
+          <div className="px-4 pb-1 border-t border-dark-border pt-3 shrink-0">
+            <button
+              disabled={saving}
+              onClick={toggleActive}
+              className="w-full py-1.5 rounded text-xs transition-colors disabled:opacity-50 text-parchment/40 hover:text-ember/80 hover:bg-ember/10 border border-transparent hover:border-ember/20"
+            >
+              {character?.player_active ?? true ? 'Отвязать персонажа от комнаты' : 'Привязать персонажа к комнате'}
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-2 px-4 py-3 border-t border-dark-border shrink-0">
           <button
             onClick={onClose}
@@ -387,9 +425,10 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
             Отмена
           </button>
           <button
-            disabled={saving}
+            disabled={saving || !canEditSheet}
             onClick={handleSave}
             className="flex-1 py-2 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light font-fantasy transition-colors disabled:opacity-50"
+            title={!canEditSheet ? 'Редактирование анкеты отключено мастером' : undefined}
           >
             {saving ? 'Сохранение...' : 'Сохранить'}
           </button>
@@ -399,7 +438,6 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
   )
 }
 
-// ─── Sub-tab components ─────────────────────────────────────────────────────
 
 const STAT_LABELS: { key: StatKey; short: string }[] = [
   { key: 'strength', short: 'СИЛ' },

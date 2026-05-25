@@ -46,7 +46,6 @@ func (rl *rateLimiter) allow(ip string) bool {
 	return true
 }
 
-// RateLimit returns middleware that limits each IP to limit requests per window.
 func RateLimit(limit int, window time.Duration) func(http.Handler) http.Handler {
 	rl := newRateLimiter(limit, window)
 	return func(next http.Handler) http.Handler {

@@ -46,6 +46,7 @@ const (
 	EvMapClear       = "MAP_CLEAR"
 	EvSessionClear   = "SESSION_CLEAR"
 	EvDmPresence     = "DM_PRESENCE"
+	EvSettingsUpdate = "SETTINGS_UPDATE"
 )
 
 type Message struct {
@@ -528,6 +529,20 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		}
 		tokens, _ := h.store.GetTokensByRoom(ctx, roomID)
 		h.broadcastToRoom(c.room, EvFullState, map[string]any{"game_state": gs, "tokens": tokens})
+
+	case EvSettingsUpdate:
+		if c.role != "dm" {
+			return
+		}
+		var settings store.RoomSettings
+		if err := json.Unmarshal(msg.Payload, &settings); err != nil {
+			return
+		}
+		if err := h.store.UpdateRoomSettings(ctx, roomID, settings); err != nil {
+			log.Printf("hub: settings update: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvSettingsUpdate, settings)
 
 	case EvSessionClear:
 		if c.role != "dm" {

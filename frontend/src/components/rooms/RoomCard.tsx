@@ -20,7 +20,17 @@ interface RoomCardProps {
   onLeft: (id: string) => void
 }
 
-type Panel = 'rename' | 'delete' | 'leave' | null
+interface RoomSettings {
+  player_can_move_token: boolean
+  player_can_reveal_fog: boolean
+  player_can_edit_token: boolean
+  player_can_edit_hp: boolean
+  player_can_edit_sheet: boolean
+  players_see_dm_rolls: boolean
+  player_can_roll_dice: boolean
+}
+
+type Panel = 'rename' | 'delete' | 'leave' | 'settings' | null
 
 export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCardProps) {
   const [showCode, setShowCode] = useState(false)
@@ -29,6 +39,8 @@ export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCa
   const [deleteInput, setDeleteInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [settings, setSettings] = useState<RoomSettings | null>(null)
+  const [settingsLoading, setSettingsLoading] = useState(false)
 
   const closePanel = () => {
     setPanel(null)
@@ -41,6 +53,19 @@ export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCa
     closePanel()
     setPanel(p)
     if (p === 'rename') setRenameInput(room.name)
+    if (p === 'settings' && !settings) {
+      setSettingsLoading(true)
+      api.get<RoomSettings>(`/api/v1/rooms/${room.code}/settings`)
+        .then(({ data }) => setSettings(data))
+        .finally(() => setSettingsLoading(false))
+    }
+  }
+
+  const toggleSetting = async (key: keyof RoomSettings, value: boolean) => {
+    if (!settings) return
+    const next = { ...settings, [key]: value }
+    setSettings(next)
+    await api.patch(`/api/v1/rooms/${room.code}/settings`, next)
   }
 
   const handleRename = async () => {
@@ -125,6 +150,12 @@ export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCa
         <div className="flex gap-2 pt-1 border-t border-dark-border">
           {isDm ? (
             <>
+              <button
+                onClick={() => openPanel('settings')}
+                className="flex-1 py-1 text-xs text-parchment/50 hover:text-parchment/80 border border-dark-border hover:border-parchment/30 rounded font-fantasy transition-colors"
+              >
+                Настройки
+              </button>
               <button
                 onClick={() => openPanel('rename')}
                 className="flex-1 py-1 text-xs text-parchment/50 hover:text-parchment/80 border border-dark-border hover:border-parchment/30 rounded font-fantasy transition-colors"
@@ -230,6 +261,48 @@ export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCa
               Отмена
             </button>
           </div>
+        </div>
+      )}
+
+      {panel === 'settings' && (
+        <div className="flex flex-col gap-3 pt-1 border-t border-dark-border">
+          <p className="text-xs font-fantasy text-parchment/50">Права игроков</p>
+          {settingsLoading || !settings ? (
+            <p className="text-xs text-parchment/30 animate-pulse">Загрузка...</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {([
+                { key: 'player_can_move_token' as const, label: 'Перемещать токен', indent: false },
+                { key: 'player_can_reveal_fog' as const, label: 'Раскрывать туман', indent: true, parentKey: 'player_can_move_token' as const },
+                { key: 'player_can_edit_token' as const, label: 'Редактировать персонажа', indent: false },
+                { key: 'player_can_edit_hp' as const, label: 'Менять HP', indent: true, parentKey: 'player_can_edit_token' as const },
+                { key: 'player_can_edit_sheet' as const, label: 'Редактировать анкету', indent: true, parentKey: 'player_can_edit_token' as const },
+                { key: 'players_see_dm_rolls' as const, label: 'Видят броски мастера', indent: false },
+                { key: 'player_can_roll_dice' as const, label: 'Бросать кубики', indent: false },
+              ] as Array<{ key: keyof RoomSettings; label: string; indent: boolean; parentKey?: keyof RoomSettings }>).map(({ key, label, indent, parentKey }) => {
+                const disabled = parentKey ? !settings[parentKey] : false
+                const value = settings[key]
+                return (
+                  <div key={key} className={`flex items-center gap-2 ${indent ? 'pl-3' : ''}`}>
+                    {indent && <span className="text-parchment/20 text-xs">└</span>}
+                    <span className={`flex-1 text-xs ${disabled ? 'text-parchment/30' : 'text-parchment/70'}`}>{label}</span>
+                    <button
+                      onClick={() => !disabled && toggleSetting(key, !value)}
+                      className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${value && !disabled ? 'bg-gold/70' : value ? 'bg-gold/40' : 'bg-dark-border'}`}
+                    >
+                      <span className="absolute top-0.5 w-3 h-3 rounded-full bg-parchment transition-all" style={{ left: value ? '18px' : '2px' }} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <button
+            onClick={closePanel}
+            className="py-1 text-xs text-parchment/50 hover:text-parchment border border-dark-border rounded font-fantasy transition-colors"
+          >
+            Закрыть
+          </button>
         </div>
       )}
     </div>

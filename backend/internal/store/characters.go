@@ -9,27 +9,28 @@ import (
 )
 
 type Character struct {
-	ID         uuid.UUID
-	UserID     uuid.UUID
-	RoomID     uuid.UUID
-	Name       string
-	Class      string
-	Subclass   string
-	Race       string
-	Subrace    string
-	Level      int
-	HP         int
-	MaxHP      int
-	AC         int
-	TempHP     int
-	Stats      json.RawMessage
-	Weapons    json.RawMessage
-	SpellSlots json.RawMessage
-	Abilities  json.RawMessage
-	Inventory  string
-	Notes      string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	RoomID       uuid.UUID
+	Name         string
+	Class        string
+	Subclass     string
+	Race         string
+	Subrace      string
+	Level        int
+	HP           int
+	MaxHP        int
+	AC           int
+	TempHP       int
+	Stats        json.RawMessage
+	Weapons      json.RawMessage
+	SpellSlots   json.RawMessage
+	Abilities    json.RawMessage
+	Inventory    string
+	Notes        string
+	PlayerActive bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type CharacterInput struct {
@@ -53,7 +54,7 @@ type CharacterInput struct {
 
 const characterColumns = `
 	id, user_id, room_id, name, class, subclass, race, subrace, level, hp, max_hp, ac, temp_hp,
-	stats, weapons, spell_slots, abilities, inventory, notes, created_at, updated_at`
+	stats, weapons, spell_slots, abilities, inventory, notes, player_active, created_at, updated_at`
 
 func scanCharacter(row interface{ Scan(...any) error }) (Character, error) {
 	var c Character
@@ -62,7 +63,7 @@ func scanCharacter(row interface{ Scan(...any) error }) (Character, error) {
 		&c.Name, &c.Class, &c.Subclass, &c.Race, &c.Subrace,
 		&c.Level, &c.HP, &c.MaxHP, &c.AC, &c.TempHP,
 		&c.Stats, &c.Weapons, &c.SpellSlots, &c.Abilities,
-		&c.Inventory, &c.Notes, &c.CreatedAt, &c.UpdatedAt,
+		&c.Inventory, &c.Notes, &c.PlayerActive, &c.CreatedAt, &c.UpdatedAt,
 	)
 	return c, err
 }
@@ -169,6 +170,16 @@ func (s *Store) UpdateCharacterHP(ctx context.Context, id uuid.UUID, delta int, 
 func (s *Store) DeleteCharacter(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM characters WHERE id = $1`, id)
 	return err
+}
+
+func (s *Store) SetCharacterActive(ctx context.Context, id uuid.UUID, active bool) (Character, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE characters SET player_active = $1, updated_at = NOW()
+		WHERE id = $2
+		RETURNING `+characterColumns,
+		active, id,
+	)
+	return scanCharacter(row)
 }
 
 func (s *Store) GetMemberRoleByRoomID(ctx context.Context, roomID, userID uuid.UUID) (string, error) {

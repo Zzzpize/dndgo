@@ -287,8 +287,6 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const worldH = worldHRef.current
     const paths = gameState?.fog_paths ?? []
 
-    // Isolated group: destination-out operations are contained within the group's
-    // offscreen canvas, preventing anti-aliased edge artifacts from overlapping circles.
     const fogGroup = new Konva.Group()
     fogGroup.add(new Konva.Rect({ x: 0, y: 0, width: WORLD_W, height: worldH, fill: 'black' }))
 
@@ -302,7 +300,6 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
           globalCompositeOperation: 'destination-out',
         }))
       } else {
-        // Hide path: paint fog back over a revealed area
         fogGroup.add(new Konva.Circle({
           x: path.rel_x * WORLD_W,
           y: path.rel_y * worldH,
@@ -338,7 +335,12 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       const activeEntry = initiativeOrder[activeInitIndex % Math.max(initiativeOrder.length, 1)]
       const isActive = initiativeOrder.length > 0 && !!activeEntry?.token_id && activeEntry.token_id === token.id
       const isSelected = token.id === selectedTokenId
-      const canDrag = role === 'dm' || (token.token_type === 'pc' && char?.user_id === myUserId)
+      const canDrag = role === 'dm' || (
+        token.token_type === 'pc' &&
+        char?.user_id === myUserId &&
+        (char?.player_active ?? true) &&
+        (gameState?.player_can_move_token ?? true)
+      )
       const color = token.token_type === 'pc' ? PC_COLOR : (DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral)
 
       const hpPct = char
@@ -406,7 +408,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         sendMessageRef.current('TOKEN_DRAG', { id: token.id, rel_x: nx, rel_y: ny })
         if (token.token_type === 'pc') {
           const s = useGameStore.getState()
-          if (!s.gameState?.fog_cleared) {
+          if (!s.gameState?.fog_cleared && (s.gameState?.player_can_reveal_fog ?? true)) {
             const gridSize = s.gameState?.grid_size ?? 50
             sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gridSize / 5) * 30 }])
           }
@@ -426,6 +428,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         if (token.token_type === 'pc') {
           const s = useGameStore.getState()
           if (s.gameState?.fog_cleared) return
+          if (!(s.gameState?.player_can_reveal_fog ?? true)) return
           const gridSize = s.gameState?.grid_size ?? 50
           sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gridSize / 5) * 30 }])
         }
@@ -491,7 +494,12 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       if (dist <= tokenRadius + 4) {
         const char = s.characters.find((c) => c.id === token.character_id)
         const uid = useAuthStore.getState().user?.id
-        const canEdit = s.role === 'dm' || (token.token_type === 'pc' && char?.user_id === uid)
+        const canEdit = s.role === 'dm' || (
+          token.token_type === 'pc' &&
+          char?.user_id === uid &&
+          (char?.player_active ?? true) &&
+          (s.gameState?.player_can_edit_token ?? true)
+        )
         if (canEdit) s.setEditingTokenId(token.id)
         return
       }

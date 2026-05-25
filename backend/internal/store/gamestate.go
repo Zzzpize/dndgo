@@ -16,14 +16,31 @@ type FogPath struct {
 }
 
 type GameState struct {
-	RoomID          uuid.UUID       `json:"room_id"`
-	MapImageURL     string          `json:"map_image_url"`
-	MapAspect       float64         `json:"map_aspect"`
-	GridEnabled     bool            `json:"grid_enabled"`
-	GridSize        int             `json:"grid_size"`
-	FogPaths        json.RawMessage `json:"fog_paths"`
-	FogCleared      bool            `json:"fog_cleared"`
-	InitiativeOrder json.RawMessage `json:"initiative_order"`
+	RoomID              uuid.UUID       `json:"room_id"`
+	MapImageURL         string          `json:"map_image_url"`
+	MapAspect           float64         `json:"map_aspect"`
+	GridEnabled         bool            `json:"grid_enabled"`
+	GridSize            int             `json:"grid_size"`
+	FogPaths            json.RawMessage `json:"fog_paths"`
+	FogCleared          bool            `json:"fog_cleared"`
+	InitiativeOrder     json.RawMessage `json:"initiative_order"`
+	PlayerCanMoveToken  bool            `json:"player_can_move_token"`
+	PlayerCanRevealFog  bool            `json:"player_can_reveal_fog"`
+	PlayerCanEditToken  bool            `json:"player_can_edit_token"`
+	PlayerCanEditHP     bool            `json:"player_can_edit_hp"`
+	PlayerCanEditSheet  bool            `json:"player_can_edit_sheet"`
+	PlayersSeesDMRolls  bool            `json:"players_see_dm_rolls"`
+	PlayerCanRollDice   bool            `json:"player_can_roll_dice"`
+}
+
+type RoomSettings struct {
+	PlayerCanMoveToken bool `json:"player_can_move_token"`
+	PlayerCanRevealFog bool `json:"player_can_reveal_fog"`
+	PlayerCanEditToken bool `json:"player_can_edit_token"`
+	PlayerCanEditHP    bool `json:"player_can_edit_hp"`
+	PlayerCanEditSheet bool `json:"player_can_edit_sheet"`
+	PlayersSeesDMRolls bool `json:"players_see_dm_rolls"`
+	PlayerCanRollDice  bool `json:"player_can_roll_dice"`
 }
 
 type MapToken struct {
@@ -57,21 +74,59 @@ type TokenInput struct {
 func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, error) {
 	var gs GameState
 	err := s.pool.QueryRow(ctx, `
-		SELECT room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order
+		SELECT room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order,
+		       player_can_move_token, player_can_reveal_fog, player_can_edit_token,
+		       player_can_edit_hp, player_can_edit_sheet, players_see_dm_rolls, player_can_roll_dice
 		FROM game_state WHERE room_id = $1`, roomID,
-	).Scan(&gs.RoomID, &gs.MapImageURL, &gs.MapAspect, &gs.GridEnabled, &gs.GridSize, &gs.FogPaths, &gs.FogCleared, &gs.InitiativeOrder)
+	).Scan(
+		&gs.RoomID, &gs.MapImageURL, &gs.MapAspect, &gs.GridEnabled, &gs.GridSize,
+		&gs.FogPaths, &gs.FogCleared, &gs.InitiativeOrder,
+		&gs.PlayerCanMoveToken, &gs.PlayerCanRevealFog, &gs.PlayerCanEditToken,
+		&gs.PlayerCanEditHP, &gs.PlayerCanEditSheet, &gs.PlayersSeesDMRolls, &gs.PlayerCanRollDice,
+	)
 	if err == pgx.ErrNoRows {
 		return GameState{
-			RoomID:          roomID,
-			MapAspect:       1,
-			GridEnabled:     true,
-			GridSize:        50,
-			FogPaths:        json.RawMessage("[]"),
-			FogCleared:      true,
-			InitiativeOrder: json.RawMessage("[]"),
+			RoomID:             roomID,
+			MapAspect:          1,
+			GridEnabled:        true,
+			GridSize:           50,
+			FogPaths:           json.RawMessage("[]"),
+			FogCleared:         true,
+			InitiativeOrder:    json.RawMessage("[]"),
+			PlayerCanMoveToken: true,
+			PlayerCanRevealFog: true,
+			PlayerCanEditToken: true,
+			PlayerCanEditHP:    true,
+			PlayerCanEditSheet: true,
+			PlayersSeesDMRolls: true,
+			PlayerCanRollDice:  true,
 		}, nil
 	}
 	return gs, err
+}
+
+func (s *Store) UpdateRoomSettings(ctx context.Context, roomID uuid.UUID, settings RoomSettings) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO game_state
+			(room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order,
+			 player_can_move_token, player_can_reveal_fog, player_can_edit_token,
+			 player_can_edit_hp, player_can_edit_sheet, players_see_dm_rolls, player_can_roll_dice, updated_at)
+		VALUES ($1, '', 1, true, 50, '[]'::jsonb, true, '[]'::jsonb, $2, $3, $4, $5, $6, $7, $8, NOW())
+		ON CONFLICT (room_id) DO UPDATE SET
+			player_can_move_token = EXCLUDED.player_can_move_token,
+			player_can_reveal_fog = EXCLUDED.player_can_reveal_fog,
+			player_can_edit_token = EXCLUDED.player_can_edit_token,
+			player_can_edit_hp    = EXCLUDED.player_can_edit_hp,
+			player_can_edit_sheet = EXCLUDED.player_can_edit_sheet,
+			players_see_dm_rolls  = EXCLUDED.players_see_dm_rolls,
+			player_can_roll_dice  = EXCLUDED.player_can_roll_dice,
+			updated_at            = NOW()`,
+		roomID,
+		settings.PlayerCanMoveToken, settings.PlayerCanRevealFog, settings.PlayerCanEditToken,
+		settings.PlayerCanEditHP, settings.PlayerCanEditSheet, settings.PlayersSeesDMRolls,
+		settings.PlayerCanRollDice,
+	)
+	return err
 }
 
 func (s *Store) UpsertGameState(ctx context.Context, gs GameState) error {

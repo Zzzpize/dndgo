@@ -19,6 +19,10 @@ export function DiceRoller({ sendMessage }: Props) {
   const role = useGameStore((s) => s.role)
   const clearDiceLogs = useGameStore((s) => s.clearDiceLogs)
   const diceLogs = useGameStore((s) => s.diceLogs)
+  const gameState = useGameStore((s) => s.gameState)
+  const canRoll = role === 'dm' || (gameState?.player_can_roll_dice ?? true)
+  const seeDmRolls = role === 'dm' || (gameState?.players_see_dm_rolls ?? true)
+  const visibleLogs = seeDmRolls ? diceLogs : diceLogs.filter((l) => l.role !== 'dm')
 
   useEffect(() => {
     if (!expanded) return
@@ -64,7 +68,8 @@ export function DiceRoller({ sendMessage }: Props) {
           <button
             key={d}
             onClick={() => roll(d)}
-            className="px-2 py-0.5 text-xs font-fantasy bg-dark hover:bg-dark-hover border border-dark-border hover:border-gold/40 rounded text-parchment/60 hover:text-gold-light transition-colors"
+            disabled={!canRoll}
+            className="px-2 py-0.5 text-xs font-fantasy bg-dark hover:bg-dark-hover border border-dark-border hover:border-gold/40 rounded text-parchment/60 hover:text-gold-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {d}
           </button>
@@ -99,7 +104,8 @@ export function DiceRoller({ sendMessage }: Props) {
       </div>
       <button
         onClick={() => roll(notation)}
-        className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light font-fantasy transition-colors shrink-0"
+        disabled={!canRoll}
+        className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light font-fantasy transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Бросить
       </button>
@@ -114,7 +120,7 @@ export function DiceRoller({ sendMessage }: Props) {
         Очистить
       </button>
 
-      {diceLogs.length > 0 && (
+      {visibleLogs.length > 0 && (
         <>
           <div className="w-px h-4 bg-dark-border shrink-0" />
 
@@ -124,7 +130,7 @@ export function DiceRoller({ sendMessage }: Props) {
               className="flex items-center gap-3 overflow-hidden cursor-pointer group"
               title="Нажмите для раскрытия"
             >
-              {diceLogs.slice(0, 12).map((log, i) => {
+              {visibleLogs.slice(0, 12).map((log, i) => {
                 return (
                   <div
                     key={log.id}
@@ -159,7 +165,7 @@ export function DiceRoller({ sendMessage }: Props) {
                   </button>
                 </div>
                 <div className="overflow-y-auto" style={{ maxHeight: '17.5rem' }}>
-                  {diceLogs.map((log) => {
+                  {visibleLogs.map((log) => {
                     return (
                       <div
                         key={log.id}

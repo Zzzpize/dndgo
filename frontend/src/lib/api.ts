@@ -16,7 +16,9 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       removeStoredToken()
       if (typeof window !== 'undefined') {
-        window.location.href = '/login'
+        const path = window.location.pathname
+        const isAuthPage = path === '/login' || path === '/register' || path.startsWith('/verify-email')
+        if (!isAuthPage) window.location.href = '/login'
       }
     }
     return Promise.reject(err)

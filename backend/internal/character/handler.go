@@ -69,28 +69,29 @@ type statsEnriched struct {
 }
 
 type characterResponse struct {
-	ID          string          `json:"id"`
-	UserID      string          `json:"user_id"`
-	RoomID      string          `json:"room_id"`
-	Name        string          `json:"name"`
-	Class       string          `json:"class"`
-	Subclass    string          `json:"subclass"`
-	Race        string          `json:"race"`
-	Subrace     string          `json:"subrace"`
-	Level       int             `json:"level"`
-	HP          int             `json:"hp"`
-	MaxHP       int             `json:"max_hp"`
-	AC          int             `json:"ac"`
-	TempHP      int             `json:"temp_hp"`
-	EffectiveAC int             `json:"effective_ac"`
-	Stats       *statsEnriched  `json:"stats"`
-	Weapons     json.RawMessage `json:"weapons"`
-	SpellSlots  json.RawMessage `json:"spell_slots"`
-	Abilities   json.RawMessage `json:"abilities"`
-	Inventory   string          `json:"inventory"`
-	Notes       string          `json:"notes"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID           string          `json:"id"`
+	UserID       string          `json:"user_id"`
+	RoomID       string          `json:"room_id"`
+	Name         string          `json:"name"`
+	Class        string          `json:"class"`
+	Subclass     string          `json:"subclass"`
+	Race         string          `json:"race"`
+	Subrace      string          `json:"subrace"`
+	Level        int             `json:"level"`
+	HP           int             `json:"hp"`
+	MaxHP        int             `json:"max_hp"`
+	AC           int             `json:"ac"`
+	TempHP       int             `json:"temp_hp"`
+	EffectiveAC  int             `json:"effective_ac"`
+	PlayerActive bool            `json:"player_active"`
+	Stats        *statsEnriched  `json:"stats"`
+	Weapons      json.RawMessage `json:"weapons"`
+	SpellSlots   json.RawMessage `json:"spell_slots"`
+	Abilities    json.RawMessage `json:"abilities"`
+	Inventory    string          `json:"inventory"`
+	Notes        string          `json:"notes"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
 func modifier(score int) int { return (score - 10) / 2 }
@@ -111,28 +112,29 @@ func toResponse(c store.Character) characterResponse {
 	}
 	effectiveAC := c.AC + raw.ShieldBonus
 	return characterResponse{
-		ID:          c.ID.String(),
-		UserID:      c.UserID.String(),
-		RoomID:      c.RoomID.String(),
-		Name:        c.Name,
-		Class:       c.Class,
-		Subclass:    c.Subclass,
-		Race:        c.Race,
-		Subrace:     c.Subrace,
-		Level:       c.Level,
-		HP:          c.HP,
-		MaxHP:       c.MaxHP,
-		AC:          c.AC,
-		TempHP:      c.TempHP,
-		EffectiveAC: effectiveAC,
-		Stats:       enriched,
-		Weapons:     c.Weapons,
-		SpellSlots:  c.SpellSlots,
-		Abilities:   c.Abilities,
-		Inventory:   c.Inventory,
-		Notes:       c.Notes,
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
+		ID:           c.ID.String(),
+		UserID:       c.UserID.String(),
+		RoomID:       c.RoomID.String(),
+		Name:         c.Name,
+		Class:        c.Class,
+		Subclass:     c.Subclass,
+		Race:         c.Race,
+		Subrace:      c.Subrace,
+		Level:        c.Level,
+		HP:           c.HP,
+		MaxHP:        c.MaxHP,
+		AC:           c.AC,
+		TempHP:       c.TempHP,
+		EffectiveAC:  effectiveAC,
+		PlayerActive: c.PlayerActive,
+		Stats:        enriched,
+		Weapons:      c.Weapons,
+		SpellSlots:   c.SpellSlots,
+		Abilities:    c.Abilities,
+		Inventory:    c.Inventory,
+		Notes:        c.Notes,
+		CreatedAt:    c.CreatedAt,
+		UpdatedAt:    c.UpdatedAt,
 	}
 }
 
@@ -609,6 +611,53 @@ func (h *Handler) ImportTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.JSON(w, http.StatusCreated, toResponse(c))
+}
+
+// /api/v1/characters/{id}/active
+func (h *Handler) SetActive(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserID(r)
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid character id", "ERR_BAD_REQUEST")
+		return
+	}
+
+	c, err := h.store.GetCharacterByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusNotFound, "character not found", "ERR_NOT_FOUND")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	if c.UserID != userID {
+		role, roleErr := h.store.GetMemberRoleByRoomID(r.Context(), c.RoomID, userID)
+		if roleErr != nil || role != "dm" {
+			httputil.Error(w, http.StatusForbidden, "access denied", "ERR_FORBIDDEN")
+			return
+		}
+	}
+
+	var req struct {
+		Active bool `json:"active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid request body", "ERR_BAD_REQUEST")
+		return
+	}
+
+	updated, err := h.store.SetCharacterActive(r.Context(), id, req.Active)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	httputil.JSON(w, http.StatusOK, toResponse(updated))
 }
 
 // /api/v1/characters/{id}

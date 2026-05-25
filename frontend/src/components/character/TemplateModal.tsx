@@ -252,7 +252,6 @@ export function TemplateModal({ template, onClose, onSaved }: Props) {
   )
 }
 
-// ─── Sub-tab components ──────────────────────────────────────────────────────
 
 const STAT_LABELS: { key: StatKey; short: string }[] = [
   { key: 'strength', short: 'СИЛ' },

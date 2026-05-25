@@ -563,7 +563,6 @@ function NpcTab({
 
   return (
     <div className="p-3 flex flex-col gap-3">
-      {/* Свои НПС */}
       <div className="flex items-center justify-between">
         <span className="text-parchment/50 text-xs font-fantasy">Свои НПС ({npcs.length})</span>
         <div className="flex gap-1">
@@ -662,7 +661,6 @@ function NpcTab({
 
       <hr className="border-dark-border" />
 
-      {/* Бестиарий */}
       <span className="text-parchment/50 text-xs font-fantasy">Бестиарий</span>
       <div className="relative">
         <input
