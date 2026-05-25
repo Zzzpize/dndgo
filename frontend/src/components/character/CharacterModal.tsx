@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ReactNode } from 'react'
 import api from '@/lib/api'
+import { parseMaxHP } from '@/lib/maxhp'
 import { Character, useGameStore } from '@/store/gameStore'
 import { useAuthStore } from '@/store/authStore'
 
@@ -244,9 +245,9 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
     if (!form.name.trim()) { setError('Введите имя персонажа'); return }
 
     const numLevel = parseInt(form.level)
-    const numMaxHp = parseInt(form.max_hp)
+    const { numeric: numMaxHp, isInf: maxHpIsInf, valid: maxHpValid } = parseMaxHP(form.max_hp)
     const hpSource = character ? character.hp : (form.hp === '' ? 0 : parseInt(form.hp))
-    const numHp = Math.min(hpSource, numMaxHp)
+    const numHp = maxHpIsInf ? hpSource : Math.min(hpSource, numMaxHp)
     const tempSource = character ? character.temp_hp : (form.temp_hp === '' ? 0 : parseInt(form.temp_hp))
     const numTempHp = isNaN(tempSource) ? 0 : tempSource
     const numAc = parseInt(form.ac)
@@ -254,8 +255,8 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
     if (!form.level || isNaN(numLevel) || numLevel < 1 || numLevel > 20) {
       setError('Уровень: от 1 до 20'); return
     }
-    if (!form.max_hp || isNaN(numMaxHp) || numMaxHp < 1) {
-      setError('Макс. HP: не менее 1'); return
+    if (!maxHpValid) {
+      setError('Макс. HP: введите число (напр., 20 или 20 (2d10+8)) или Inf'); return
     }
     if (isNaN(numHp) || numHp < 0) { setError('HP: не менее 0'); return }
     if (isNaN(numTempHp) || numTempHp < 0) { setError('Врем. HP: не менее 0'); return }
@@ -277,7 +278,7 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
       const body = {
         ...form,
         level: numLevel,
-        max_hp: numMaxHp,
+        max_hp: form.max_hp.trim(),
         hp: numHp,
         temp_hp: numTempHp,
         ac: numAc,
@@ -556,8 +557,8 @@ function MainTab({
       </Field>
       <div className={`grid gap-2 ${hideHpFields ? 'grid-cols-1' : 'grid-cols-3'}`}>
         <Field label="Макс. HP">
-          <input type="number" min={1} className={numCls} value={form.max_hp}
-            onChange={(e) => setField('max_hp', e.target.value)} />
+          <input type="text" className={inputCls} value={form.max_hp}
+            onChange={(e) => setField('max_hp', e.target.value)} placeholder="20 или Inf" />
         </Field>
         {!hideHpFields && (
           <>

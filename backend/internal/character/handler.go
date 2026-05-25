@@ -31,7 +31,7 @@ type characterRequest struct {
 	Subrace    string          `json:"subrace"`
 	Level      int             `json:"level"`
 	HP         int             `json:"hp"`
-	MaxHP      int             `json:"max_hp"`
+	MaxHP      string          `json:"max_hp"`
 	AC         int             `json:"ac"`
 	TempHP     int             `json:"temp_hp"`
 	Stats      json.RawMessage `json:"stats"`
@@ -79,7 +79,7 @@ type characterResponse struct {
 	Subrace      string          `json:"subrace"`
 	Level        int             `json:"level"`
 	HP           int             `json:"hp"`
-	MaxHP        int             `json:"max_hp"`
+	MaxHP        string          `json:"max_hp"`
 	AC           int             `json:"ac"`
 	TempHP       int             `json:"temp_hp"`
 	EffectiveAC  int             `json:"effective_ac"`
@@ -148,7 +148,7 @@ type templateResponse struct {
 	Subrace    string          `json:"subrace"`
 	Level      int             `json:"level"`
 	HP         int             `json:"hp"`
-	MaxHP      int             `json:"max_hp"`
+	MaxHP      string          `json:"max_hp"`
 	AC         int             `json:"ac"`
 	TempHP     int             `json:"temp_hp"`
 	EffectiveAC int            `json:"effective_ac"`
@@ -236,6 +236,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" {
 		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
+		return
+	}
+	if _, _, ok := store.ParseMaxHP(req.MaxHP); !ok {
+		httputil.Error(w, http.StatusBadRequest, "invalid max_hp format", "ERR_VALIDATION")
 		return
 	}
 
@@ -359,6 +363,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
 		return
 	}
+	if _, _, ok := store.ParseMaxHP(req.MaxHP); !ok {
+		httputil.Error(w, http.StatusBadRequest, "invalid max_hp format", "ERR_VALIDATION")
+		return
+	}
 
 	updated, err := h.store.UpdateCharacter(r.Context(), id, store.CharacterInput{
 		Name: req.Name, Class: req.Class, Subclass: req.Subclass,
@@ -458,6 +466,10 @@ func (h *Handler) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
 		return
 	}
+	if _, _, ok := store.ParseMaxHP(req.MaxHP); !ok {
+		httputil.Error(w, http.StatusBadRequest, "invalid max_hp format", "ERR_VALIDATION")
+		return
+	}
 
 	t, err := h.store.CreateTemplate(r.Context(), userID, store.CharacterInput{
 		Name: req.Name, Class: req.Class, Subclass: req.Subclass,
@@ -508,6 +520,10 @@ func (h *Handler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" {
 		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
+		return
+	}
+	if _, _, ok := store.ParseMaxHP(req.MaxHP); !ok {
+		httputil.Error(w, http.StatusBadRequest, "invalid max_hp format", "ERR_VALIDATION")
 		return
 	}
 
@@ -602,7 +618,7 @@ func (h *Handler) ImportTemplate(w http.ResponseWriter, r *http.Request) {
 	c, err := h.store.CreateCharacter(r.Context(), userID, room.ID, store.CharacterInput{
 		Name: tmpl.Name, Class: tmpl.Class, Subclass: tmpl.Subclass,
 		Race: tmpl.Race, Subrace: tmpl.Subrace,
-		Level: tmpl.Level, HP: tmpl.MaxHP, MaxHP: tmpl.MaxHP, AC: tmpl.AC, TempHP: 0,
+		Level: tmpl.Level, HP: store.NumericMaxHP(tmpl.MaxHP), MaxHP: tmpl.MaxHP, AC: tmpl.AC, TempHP: 0,
 		Stats: tmpl.Stats, Weapons: tmpl.Weapons, SpellSlots: tmpl.SpellSlots,
 		Abilities: tmpl.Abilities, Inventory: tmpl.Inventory, Notes: tmpl.Notes,
 	})
@@ -654,7 +670,7 @@ func (h *Handler) ExportToTemplate(w http.ResponseWriter, r *http.Request) {
 	input := store.CharacterInput{
 		Name: c.Name, Class: c.Class, Subclass: c.Subclass,
 		Race: c.Race, Subrace: c.Subrace,
-		Level: c.Level, HP: c.MaxHP, MaxHP: c.MaxHP, AC: c.AC, TempHP: 0,
+		Level: c.Level, HP: store.NumericMaxHP(c.MaxHP), MaxHP: c.MaxHP, AC: c.AC, TempHP: 0,
 		Stats: c.Stats, Weapons: c.Weapons, SpellSlots: c.SpellSlots,
 		Abilities: c.Abilities, Inventory: c.Inventory, Notes: c.Notes,
 	}

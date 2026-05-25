@@ -13,12 +13,14 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (password.length < 6) { setError('Пароль не менее 6 символов'); return }
+    if (password.length < 8) { setError('Пароль не менее 8 символов'); return }
+    if (password !== confirm) { setError('Пароли не совпадают'); return }
     setLoading(true)
     setError('')
     try {
@@ -64,7 +66,15 @@ export default function RegisterPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Не менее 6 символов"
+            placeholder="Не менее 8 символов"
+            required
+          />
+          <Input
+            label="Повторите пароль"
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="••••••••"
             required
           />
 

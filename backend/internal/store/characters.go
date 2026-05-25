@@ -19,7 +19,7 @@ type Character struct {
 	Subrace      string
 	Level        int
 	HP           int
-	MaxHP        int
+	MaxHP        string
 	AC           int
 	TempHP       int
 	Stats        json.RawMessage
@@ -41,7 +41,7 @@ type CharacterInput struct {
 	Subrace    string
 	Level      int
 	HP         int
-	MaxHP      int
+	MaxHP      string
 	AC         int
 	TempHP     int
 	Stats      json.RawMessage
@@ -142,27 +142,37 @@ func (s *Store) UpdateCharacter(ctx context.Context, id uuid.UUID, in CharacterI
 }
 
 func (s *Store) UpdateCharacterHP(ctx context.Context, id uuid.UUID, delta int, tempHP *int) (Character, error) {
-	if tempHP != nil {
-		row := s.pool.QueryRow(ctx, `
-			UPDATE characters
-			SET hp = GREATEST(0, LEAST(max_hp, hp + $1)), temp_hp = $3, updated_at = NOW()
-			WHERE id = $2
-			RETURNING `+characterColumns,
-			delta, id, *tempHP,
-		)
-		return scanCharacter(row)
+	c, err := s.GetCharacterByID(ctx, id)
+	if err != nil {
+		return Character{}, err
 	}
+
+	maxNum, isInf, _ := ParseMaxHP(c.MaxHP)
+	if isInf {
+		return c, nil
+	}
+	if maxNum == 0 {
+		maxNum = 999999
+	}
+
+	var newHP, newTempHP int
+	if tempHP != nil {
+		newHP = max(0, min(maxNum, c.HP+delta))
+		newTempHP = *tempHP
+	} else if delta < 0 {
+		absorbed := min(-delta, c.TempHP)
+		newHP = max(0, c.HP-(-delta-absorbed))
+		newTempHP = c.TempHP - absorbed
+	} else {
+		newHP = max(0, min(maxNum, c.HP+delta))
+		newTempHP = c.TempHP
+	}
+
 	row := s.pool.QueryRow(ctx, `
-		UPDATE characters SET
-			temp_hp = CASE WHEN $1 < 0 THEN GREATEST(0, temp_hp + $1) ELSE temp_hp END,
-			hp = CASE
-				WHEN $1 < 0 THEN GREATEST(0, hp - GREATEST(0, -($1 + temp_hp)))
-				ELSE GREATEST(0, LEAST(max_hp, hp + $1))
-			END,
-			updated_at = NOW()
-		WHERE id = $2
+		UPDATE characters SET hp=$1, temp_hp=$2, updated_at=NOW()
+		WHERE id=$3
 		RETURNING `+characterColumns,
-		delta, id,
+		newHP, newTempHP, id,
 	)
 	return scanCharacter(row)
 }

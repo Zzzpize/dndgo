@@ -18,7 +18,7 @@ type CharacterTemplate struct {
 	Subrace    string
 	Level      int
 	HP         int
-	MaxHP      int
+	MaxHP      string
 	AC         int
 	TempHP     int
 	Stats      json.RawMessage

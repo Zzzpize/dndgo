@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button'
 export default function LoginPage() {
   const router = useRouter()
   const login = useAuthStore((s) => s.login)
-  const [email, setEmail] = useState('')
+  const [loginInput, setLoginInput] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [unverifiedEmail, setUnverifiedEmail] = useState('')
@@ -21,17 +21,16 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     try {
-      await login(email, password)
+      await login(loginInput, password)
       router.push('/rooms')
     } catch (err: unknown) {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
       if (code === 'ERR_EMAIL_NOT_VERIFIED') {
-        setUnverifiedEmail(email)
+        setUnverifiedEmail(loginInput)
         setError('Email не подтверждён')
       } else {
         setUnverifiedEmail('')
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        setError(msg || 'Неверный email или пароль')
+        setError('Неверный логин или пароль')
       }
     } finally {
       setLoading(false)
@@ -46,11 +45,11 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="герой@подземелье.рф"
+            label="Email или логин"
+            type="text"
+            value={loginInput}
+            onChange={(e) => setLoginInput(e.target.value)}
+            placeholder="герой@подземелье.рф или username"
             required
             autoFocus
           />
@@ -80,6 +79,12 @@ export default function LoginPage() {
           <Button type="submit" loading={loading} className="w-full mt-2">
             Войти
           </Button>
+
+          <p className="text-center text-xs text-parchment/40">
+            <Link href="/forgot-password" className="hover:text-parchment/70 transition-colors">
+              Забыли пароль?
+            </Link>
+          </p>
         </form>
 
         <p className="text-center text-sm text-parchment/50 mt-6">

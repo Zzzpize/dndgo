@@ -484,7 +484,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			ID          uuid.UUID `json:"id"`
 			Name        string    `json:"name"`
 			Disposition string    `json:"disposition"`
-			MaxHP       *int      `json:"max_hp"`
+			MaxHP       *string   `json:"max_hp"`
 			CurrentHP   *int      `json:"current_hp"`
 			TempHP      int       `json:"temp_hp"`
 		}

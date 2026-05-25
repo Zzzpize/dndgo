@@ -16,7 +16,7 @@ type NPC struct {
 	Name             string
 	Disposition      string
 	AC               string
-	MaxHP            int
+	MaxHP            string
 	Speed            string
 	TypeAlignment    string
 	Abilities        json.RawMessage
@@ -37,7 +37,7 @@ type NPCInput struct {
 	Name             string
 	Disposition      string
 	AC               string
-	MaxHP            int
+	MaxHP            string
 	Speed            string
 	TypeAlignment    string
 	Abilities        json.RawMessage

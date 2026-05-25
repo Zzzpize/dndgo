@@ -2,14 +2,17 @@
 
 import { useState } from 'react'
 import api from '@/lib/api'
+import { parseMaxHP } from '@/lib/maxhp'
 import { NPC, MapToken, useGameStore } from '@/store/gameStore'
 
-function applyDelta(delta: number, currentHp: number, tempHp: number, maxHp: number) {
+function applyDelta(delta: number, currentHp: number, tempHp: number, maxHpStr: string) {
   if (delta < 0) {
     const absorbed = Math.min(-delta, tempHp)
     return { current_hp: Math.max(0, currentHp - (-delta - absorbed)), temp_hp: tempHp - absorbed }
   }
-  return { current_hp: Math.max(0, Math.min(maxHp, currentHp + delta)), temp_hp: tempHp }
+  const { numeric, isInf } = parseMaxHP(maxHpStr)
+  const cap = isInf ? Infinity : numeric
+  return { current_hp: Math.max(0, Math.min(cap, currentHp + delta)), temp_hp: tempHp }
 }
 
 interface AbilityScores { str: string; dex: string; con: string; int: string; wis: string; cha: string }
@@ -78,7 +81,7 @@ const fromNPC = (n: NPC): NpcForm => {
     name: n.name,
     disposition: n.disposition,
     ac: n.ac,
-    max_hp: String(n.max_hp),
+    max_hp: n.max_hp,
     speed: n.speed,
     type_alignment: n.type_alignment,
     abilities: {
@@ -119,7 +122,6 @@ const modStr = (raw: string | number) => {
 }
 
 const inputCls = 'w-full bg-dark border border-dark-border rounded px-2 py-1.5 text-xs text-parchment placeholder-parchment/30'
-const numCls = inputCls + ' [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none'
 
 const ABILITY_LABELS: { key: keyof AbilityScores; short: string }[] = [
   { key: 'str', short: 'СИЛ' },
@@ -168,8 +170,9 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const currentHp = token?.current_hp ?? npc?.max_hp ?? 0
-  const maxHp = token?.max_hp ?? npc?.max_hp ?? 0
+  const maxHp = token?.max_hp ?? npc?.max_hp ?? '1'
+  const { numeric: maxHpNum } = parseMaxHP(maxHp)
+  const currentHp = token?.current_hp ?? maxHpNum
   const tempHp = token?.temp_hp ?? 0
   const [hpDelta, setHpDelta] = useState('')
   const [tempInput, setTempInput] = useState('')
@@ -202,9 +205,9 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
   const handleSave = async () => {
     if (!form.name.trim()) { setError('Введите имя'); return }
 
-    const numMaxHp = parseInt(form.max_hp)
-    if (!form.max_hp || isNaN(numMaxHp) || numMaxHp < 1) {
-      setError('Макс. HP: не менее 1'); return
+    const { numeric: numMaxHp, isInf: maxHpIsInf, valid: maxHpValid } = parseMaxHP(form.max_hp)
+    if (!maxHpValid) {
+      setError('Макс. HP: введите число (напр., 20 или 20 (2d10+8)) или Inf'); return
     }
 
     const abilityKeys = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
@@ -240,7 +243,7 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
         name: form.name.trim(),
         disposition: form.disposition,
         ac: form.ac || '10',
-        max_hp: numMaxHp,
+        max_hp: form.max_hp.trim(),
         speed: form.speed,
         type_alignment: form.type_alignment,
         abilities: {
@@ -271,12 +274,12 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
         addNpc(data)
       }
       if (token && sendMessage) {
-        const clampedHp = Math.min(token.current_hp ?? numMaxHp, numMaxHp)
+        const clampedHp = maxHpIsInf ? (token.current_hp ?? 0) : Math.min(token.current_hp ?? numMaxHp, numMaxHp)
         sendMessage('TOKEN_EDIT', {
           id: token.id,
           name: token.name,
           disposition: token.disposition,
-          max_hp: numMaxHp,
+          max_hp: form.max_hp.trim(),
           current_hp: clampedHp,
           temp_hp: token.temp_hp,
         })
@@ -394,8 +397,8 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-parchment/50 font-fantasy">Макс. HP</label>
-              <input type="number" min={1} className={numCls} value={form.max_hp}
-                onChange={(e) => setField('max_hp', e.target.value)} />
+              <input type="text" className={inputCls} value={form.max_hp}
+                onChange={(e) => setField('max_hp', e.target.value)} placeholder="20 или Inf" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-parchment/50 font-fantasy">Скорость</label>

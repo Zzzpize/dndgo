@@ -57,7 +57,9 @@ export default function RoomsPage() {
           </nav>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-parchment/60">{user?.username}</span>
+          <Link href="/account" className="text-sm text-parchment/60 hover:text-parchment transition-colors">
+            {user?.username}
+          </Link>
           <Button variant="ghost" onClick={logout} className="text-xs">Выйти</Button>
         </div>
       </header>

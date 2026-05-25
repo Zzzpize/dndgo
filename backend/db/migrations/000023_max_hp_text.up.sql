@@ -1,0 +1,4 @@
+ALTER TABLE characters ALTER COLUMN max_hp TYPE TEXT USING max_hp::TEXT;
+ALTER TABLE npcs ALTER COLUMN max_hp TYPE TEXT USING max_hp::TEXT;
+ALTER TABLE map_tokens ALTER COLUMN max_hp TYPE TEXT USING max_hp::TEXT;
+ALTER TABLE character_templates ALTER COLUMN max_hp TYPE TEXT USING max_hp::TEXT;

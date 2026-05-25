@@ -2,13 +2,16 @@
 
 import { useState } from 'react'
 import { NPC, MapToken } from '@/store/gameStore'
+import { parseMaxHP } from '@/lib/maxhp'
 
-function applyDelta(delta: number, currentHp: number, tempHp: number, maxHp: number) {
+function applyDelta(delta: number, currentHp: number, tempHp: number, maxHpStr: string) {
   if (delta < 0) {
     const absorbed = Math.min(-delta, tempHp)
     return { current_hp: Math.max(0, currentHp - (-delta - absorbed)), temp_hp: tempHp - absorbed }
   }
-  return { current_hp: Math.max(0, Math.min(maxHp, currentHp + delta)), temp_hp: tempHp }
+  const { numeric, isInf } = parseMaxHP(maxHpStr)
+  const cap = isInf ? Infinity : numeric
+  return { current_hp: Math.max(0, Math.min(cap, currentHp + delta)), temp_hp: tempHp }
 }
 
 interface Props {
@@ -67,8 +70,9 @@ function ActionBlock({ label, items }: { label: string; items: string[] }) {
 }
 
 export function NpcSheet({ npc, token, sendMessage, role }: Props) {
-  const currentHp = token.current_hp ?? npc.max_hp
   const maxHp = token.max_hp ?? npc.max_hp
+  const { numeric: maxHpNum, isInf: maxHpIsInf } = parseMaxHP(maxHp)
+  const currentHp = token.current_hp ?? maxHpNum
   const tempHp = token.temp_hp ?? 0
   const [tab, setTab] = useState<'combat' | 'stats'>('combat')
   const [hpDelta, setHpDelta] = useState('')
@@ -105,7 +109,7 @@ export function NpcSheet({ npc, token, sendMessage, role }: Props) {
     setTempDelta('')
   }
 
-  const hpPct = Math.max(0, currentHp) / Math.max(maxHp, 1)
+  const hpPct = maxHpIsInf ? 1 : Math.max(0, currentHp) / Math.max(maxHpNum, 1)
   const hpColor = hpPct > 0.5 ? 'bg-green-600' : hpPct > 0.25 ? 'bg-yellow-500' : 'bg-ember'
 
   const abilities = npc.abilities ?? {}

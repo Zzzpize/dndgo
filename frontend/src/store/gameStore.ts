@@ -13,7 +13,7 @@ export interface MapToken {
   rel_y: number
   disposition: 'friendly' | 'neutral' | 'hostile'
   current_hp?: number
-  max_hp?: number
+  max_hp?: string
   temp_hp: number
 }
 
@@ -32,7 +32,7 @@ export interface NPC {
   name: string
   disposition: 'friendly' | 'neutral' | 'hostile'
   ac: string
-  max_hp: number
+  max_hp: string
   speed: string
   type_alignment: string
   abilities: Record<string, number>
@@ -121,7 +121,7 @@ export interface Character {
   subrace: string
   level: number
   hp: number
-  max_hp: number
+  max_hp: string
   ac: number
   temp_hp: number
   effective_ac: number

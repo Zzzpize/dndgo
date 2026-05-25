@@ -46,13 +46,11 @@ func convertAbilities(raw json.RawMessage) json.RawMessage {
 	return out
 }
 
-func parseLeadingInt(s string, fallback int) int {
-	if m := leadingNumRe.FindStringSubmatch(s); len(m) > 1 {
-		if n, err := strconv.Atoi(m[1]); err == nil {
-			return n
-		}
+func sanitizeMaxHP(s string) string {
+	if leadingNumRe.MatchString(s) {
+		return s
 	}
-	return fallback
+	return "1"
 }
 
 type Handler struct {
@@ -68,7 +66,7 @@ type npcRequest struct {
 	Name             string          `json:"name"`
 	Disposition      string          `json:"disposition"`
 	AC               string          `json:"ac"`
-	MaxHP            int             `json:"max_hp"`
+	MaxHP            string          `json:"max_hp"`
 	Speed            string          `json:"speed"`
 	TypeAlignment    string          `json:"type_alignment"`
 	Abilities        json.RawMessage `json:"abilities"`
@@ -90,7 +88,7 @@ type npcResponse struct {
 	Name             string          `json:"name"`
 	Disposition      string          `json:"disposition"`
 	AC               string          `json:"ac"`
-	MaxHP            int             `json:"max_hp"`
+	MaxHP            string          `json:"max_hp"`
 	Speed            string          `json:"speed"`
 	TypeAlignment    string          `json:"type_alignment"`
 	Abilities        json.RawMessage `json:"abilities"`
@@ -196,6 +194,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
 		return
 	}
+	if _, _, ok := store.ParseMaxHP(req.MaxHP); !ok {
+		httputil.Error(w, http.StatusBadRequest, "invalid max_hp: must start with a digit or be Inf", "ERR_VALIDATION")
+		return
+	}
 	if req.Disposition == "" {
 		req.Disposition = "hostile"
 	}
@@ -291,6 +293,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" {
 		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
+		return
+	}
+	if _, _, ok := store.ParseMaxHP(req.MaxHP); !ok {
+		httputil.Error(w, http.StatusBadRequest, "invalid max_hp: must start with a digit or be Inf", "ERR_VALIDATION")
 		return
 	}
 
@@ -446,7 +452,7 @@ func (h *Handler) CreateFromBestiary(w http.ResponseWriter, r *http.Request) {
 		Name:             monster.NameRu,
 		Disposition:      "hostile",
 		AC:               monster.ArmorClass,
-		MaxHP:            parseLeadingInt(monster.HitPoints, 1),
+		MaxHP:            sanitizeMaxHP(monster.HitPoints),
 		Speed:            monster.Speed,
 		TypeAlignment:    monster.TypeAndAlignment,
 		Abilities:        convertAbilities(monster.Abilities),

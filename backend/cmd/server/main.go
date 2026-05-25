@@ -77,7 +77,7 @@ func main() {
 	wsHub := hub.NewHub(st)
 
 	emailSender := email.NewSender(os.Getenv("RESEND_API_KEY"), os.Getenv("RESEND_FROM"))
-	authHandler := auth.NewHandler(st, jwtSecret, emailSender)
+	authHandler := auth.NewHandler(st, jwtSecret, emailSender, publicURL)
 	gameHandler := game.NewHandler(st, wsHub, staticDir, publicURL)
 	charHandler := character.NewHandler(st)
 	npcHandler := npc.NewHandler(st)
@@ -109,6 +109,8 @@ func main() {
 				r.Post("/login", authHandler.Login)
 				r.Post("/verify", authHandler.VerifyEmail)
 				r.Post("/resend-verification", authHandler.ResendVerification)
+				r.Post("/forgot-password", authHandler.ForgotPassword)
+				r.Post("/reset-password", authHandler.ResetPassword)
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(appmw.RateLimit(5, time.Hour))
@@ -117,6 +119,10 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.JWT(jwtSecret))
 				r.Get("/me", authHandler.Me)
+				r.Patch("/account/username", authHandler.ChangeUsername)
+				r.Post("/account/email/request", authHandler.RequestEmailChange)
+				r.Post("/account/email/confirm", authHandler.ConfirmEmailChange)
+				r.Patch("/account/password", authHandler.ChangePassword)
 			})
 		})
 

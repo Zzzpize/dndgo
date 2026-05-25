@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Character, useGameStore } from '@/store/gameStore'
 import { useAuthStore } from '@/store/authStore'
+import { hpPercent } from '@/lib/maxhp'
 import api from '@/lib/api'
 
 interface Props {
@@ -72,7 +73,7 @@ export function CharacterSheet({ character, sendMessage }: Props) {
     }
   }
 
-  const hpPct = Math.max(0, character.hp) / Math.max(character.max_hp, 1)
+  const hpPct = hpPercent(character.hp, character.max_hp)
   const hpColor = hpPct > 0.5 ? 'bg-green-600' : hpPct > 0.25 ? 'bg-yellow-500' : 'bg-ember'
 
   const tabs: { key: Tab; label: string }[] = [

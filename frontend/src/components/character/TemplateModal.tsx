@@ -2,6 +2,7 @@
 
 import { useState, ReactNode } from 'react'
 import api from '@/lib/api'
+import { parseMaxHP } from '@/lib/maxhp'
 
 export interface CharacterTemplate {
   id: string
@@ -13,7 +14,7 @@ export interface CharacterTemplate {
   subrace: string
   level: number
   hp: number
-  max_hp: number
+  max_hp: string
   temp_hp: number
   ac: number
   effective_ac: number
@@ -133,7 +134,7 @@ export function TemplateModal({ template, onClose, onSaved }: Props) {
     if (!form.name.trim()) { setError('Введите имя персонажа'); return }
 
     const numLevel = parseInt(form.level)
-    const numMaxHp = parseInt(form.max_hp)
+    const { numeric: numMaxHp, isInf: maxHpIsInf, valid: maxHpValid } = parseMaxHP(form.max_hp)
     const numHp = parseInt(form.hp)
     const numTempHp = parseInt(form.temp_hp) || 0
     const numAc = parseInt(form.ac)
@@ -141,8 +142,8 @@ export function TemplateModal({ template, onClose, onSaved }: Props) {
     if (!form.level || isNaN(numLevel) || numLevel < 1 || numLevel > 20) {
       setError('Уровень: от 1 до 20'); return
     }
-    if (!form.max_hp || isNaN(numMaxHp) || numMaxHp < 1) {
-      setError('Макс. HP: не менее 1'); return
+    if (!maxHpValid) {
+      setError('Макс. HP: введите число (напр., 20 или 20 (2d10+8)) или Inf'); return
     }
     if (isNaN(numHp) || numHp < 0) { setError('HP: не менее 0'); return }
     if (isNaN(numTempHp) || numTempHp < 0) { setError('Врем. HP: не менее 0'); return }
@@ -164,8 +165,8 @@ export function TemplateModal({ template, onClose, onSaved }: Props) {
       const body = {
         ...form,
         level: numLevel,
-        max_hp: numMaxHp,
-        hp: Math.min(numHp, numMaxHp),
+        max_hp: form.max_hp.trim(),
+        hp: maxHpIsInf ? numHp : Math.min(numHp, numMaxHp),
         temp_hp: numTempHp,
         ac: numAc,
         stats: {
@@ -286,7 +287,7 @@ function MainTab({
         <input type="number" min={1} max={20} className={numCls} value={form.level} onChange={(e) => setField('level', e.target.value)} />
       </Field>
       <div className="grid grid-cols-3 gap-2">
-        <Field label="Макс. HP"><input type="number" min={1} className={numCls} value={form.max_hp} onChange={(e) => setField('max_hp', e.target.value)} /></Field>
+        <Field label="Макс. HP"><input type="text" className={inputCls} value={form.max_hp} onChange={(e) => setField('max_hp', e.target.value)} placeholder="20 или Inf" /></Field>
         <Field label="HP"><input type="number" min={0} className={numCls} value={form.hp} onChange={(e) => setField('hp', e.target.value)} /></Field>
         <Field label="Врем. HP"><input type="number" min={0} className={numCls} value={form.temp_hp} onChange={(e) => setField('temp_hp', e.target.value)} /></Field>
       </div>

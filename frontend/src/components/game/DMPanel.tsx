@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useGameStore, InitiativeEntry, Character, NPC } from '@/store/gameStore'
+import { parseMaxHP } from '@/lib/maxhp'
 import { CharacterModal } from '@/components/character/CharacterModal'
 import { NpcModal } from '@/components/game/NpcModal'
 import api from '@/lib/api'
@@ -30,7 +31,7 @@ interface PoolEntry {
   bestiary_id?: number
   name: string
   disposition: 'friendly' | 'neutral' | 'hostile'
-  max_hp?: number
+  max_hp?: string
   current_hp?: number
   subtitle?: string
 }
@@ -390,7 +391,7 @@ function NpcCard({
           name: npc.name,
           disposition: npc.disposition,
           max_hp: npc.max_hp,
-          current_hp: npc.max_hp,
+          current_hp: parseMaxHP(npc.max_hp).numeric,
         }))
       }}
       className="relative flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border group cursor-grab active:cursor-grabbing"
@@ -509,7 +510,7 @@ function NpcTab({
 
   const addToPool = (n: NPC) => onAddToPool({
     token_type: 'npc', npc_id: n.id, name: n.name,
-    disposition: n.disposition, max_hp: n.max_hp, current_hp: n.max_hp,
+    disposition: n.disposition, max_hp: n.max_hp, current_hp: parseMaxHP(n.max_hp).numeric,
     subtitle: `КД ${n.ac} · ${n.max_hp} хп`,
   })
 
@@ -678,7 +679,8 @@ function NpcTab({
               <p className="text-parchment/30 text-xs text-center py-4">Не найдено</p>
             ) : (
               results.map((m) => {
-                const maxHp = parseInt(m.hit_points) || 1
+                const maxHpStr = m.hit_points || '1'
+                const maxHpNum = parseInt(m.hit_points) || 1
                 return (
                   <div
                     key={m.id}
@@ -690,8 +692,8 @@ function NpcTab({
                         bestiary_id: m.id,
                         name: m.name_ru,
                         disposition: 'hostile',
-                        max_hp: maxHp,
-                        current_hp: maxHp,
+                        max_hp: maxHpStr,
+                        current_hp: maxHpNum,
                       }))
                     }}
                     className="flex items-center gap-2 px-2 py-2 hover:bg-dark border-b border-dark-border/30 last:border-0 group cursor-grab active:cursor-grabbing"
@@ -714,8 +716,8 @@ function NpcTab({
                             bestiary_id: m.id,
                             name: m.name_ru,
                             disposition: 'hostile',
-                            max_hp: maxHp,
-                            current_hp: maxHp,
+                            max_hp: maxHpStr,
+                            current_hp: maxHpNum,
                             subtitle: `КД ${m.armor_class} · ${m.hit_points} хп`,
                           })
                         }}

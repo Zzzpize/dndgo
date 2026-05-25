@@ -132,9 +132,7 @@ function TemplateCard({
   onDelete: () => void
 }) {
   const subtitle = [template.race, template.class].filter(Boolean).join(' · ')
-  const hpDisplay = template.hp === template.max_hp
-    ? `${template.max_hp} HP`
-    : `${template.hp}/${template.max_hp} HP`
+  const hpDisplay = `${template.hp}/${template.max_hp} HP`
 
   return (
     <div className="bg-dark-card border border-dark-border rounded-lg p-4 flex flex-col gap-3">

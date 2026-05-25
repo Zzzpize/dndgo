@@ -17,7 +17,7 @@ api.interceptors.response.use(
       removeStoredToken()
       if (typeof window !== 'undefined') {
         const path = window.location.pathname
-        const isAuthPage = path === '/login' || path === '/register' || path.startsWith('/verify-email')
+        const isAuthPage = path === '/login' || path === '/register' || path.startsWith('/verify-email') || path === '/forgot-password' || path === '/reset-password' || path === '/account'
         if (!isAuthPage) window.location.href = '/login'
       }
     }

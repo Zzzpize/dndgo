@@ -18,7 +18,7 @@ const DISP_OPTIONS: { value: MapToken['disposition']; label: string }[] = [
 export function TokenEditModal({ token, sendMessage, onClose }: Props) {
   const [name, setName] = useState(token.name)
   const [disposition, setDisposition] = useState(token.disposition)
-  const [maxHp, setMaxHp] = useState<number | ''>(token.max_hp ?? '')
+  const [maxHp, setMaxHp] = useState(token.max_hp ?? '')
   const [currentHp, setCurrentHp] = useState<number | ''>(token.current_hp ?? '')
 
   const save = () => {
@@ -26,7 +26,7 @@ export function TokenEditModal({ token, sendMessage, onClose }: Props) {
       id: token.id,
       name: name.trim() || token.name,
       disposition,
-      max_hp: maxHp === '' ? null : maxHp,
+      max_hp: maxHp.trim() || null,
       current_hp: currentHp === '' ? null : currentHp,
     })
     onClose()
@@ -85,10 +85,10 @@ export function TokenEditModal({ token, sendMessage, onClose }: Props) {
             <div className="flex-1 flex flex-col gap-1">
               <label className="text-parchment/50 text-xs">Макс. HP</label>
               <input
-                type="number"
+                type="text"
                 value={maxHp}
-                onChange={(e) => setMaxHp(e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
-                placeholder="—"
+                onChange={(e) => setMaxHp(e.target.value)}
+                placeholder="20 или Inf"
                 className="w-full bg-dark border border-dark-border rounded px-2 py-1.5 text-sm text-parchment text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>

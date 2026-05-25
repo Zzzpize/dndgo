@@ -54,7 +54,7 @@ type MapToken struct {
 	RelY        float64    `json:"rel_y"`
 	Disposition string     `json:"disposition"`
 	CurrentHP   *int       `json:"current_hp,omitempty"`
-	MaxHP       *int       `json:"max_hp,omitempty"`
+	MaxHP       *string    `json:"max_hp,omitempty"`
 	TempHP      int        `json:"temp_hp"`
 }
 
@@ -67,7 +67,7 @@ type TokenInput struct {
 	RelY        float64    `json:"rel_y"`
 	Disposition string     `json:"disposition"`
 	CurrentHP   *int       `json:"current_hp,omitempty"`
-	MaxHP       *int       `json:"max_hp,omitempty"`
+	MaxHP       *string    `json:"max_hp,omitempty"`
 	TempHP      int        `json:"temp_hp"`
 }
 
@@ -226,7 +226,7 @@ func (s *Store) UpdateTokenHP(ctx context.Context, tokenID uuid.UUID, currentHP 
 	return scanToken(row)
 }
 
-func (s *Store) UpdateToken(ctx context.Context, tokenID uuid.UUID, name, disposition string, maxHP, currentHP *int, tempHP int) (MapToken, error) {
+func (s *Store) UpdateToken(ctx context.Context, tokenID uuid.UUID, name, disposition string, maxHP *string, currentHP *int, tempHP int) (MapToken, error) {
 	row := s.pool.QueryRow(ctx, `
 		UPDATE map_tokens SET name = $2, disposition = $3, max_hp = $4, current_hp = $5, temp_hp = $6
 		WHERE id = $1

@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback } from 'react'
 import Konva from 'konva'
 import { useGameStore } from '@/store/gameStore'
 import { useAuthStore } from '@/store/authStore'
+import { hpPercent, parseMaxHP } from '@/lib/maxhp'
 import api from '@/lib/api'
 
 interface Props {
@@ -344,9 +345,9 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       const color = token.token_type === 'pc' ? PC_COLOR : (DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral)
 
       const hpPct = char
-        ? Math.max(0, char.hp) / Math.max(char.max_hp, 1)
-        : (token.current_hp !== undefined && token.max_hp != null && token.max_hp > 0)
-          ? Math.max(0, token.current_hp) / token.max_hp
+        ? hpPercent(char.hp, char.max_hp)
+        : (token.current_hp !== undefined && token.max_hp != null)
+          ? hpPercent(token.current_hp, token.max_hp)
           : null
       const isDead = hpPct === 0
 
@@ -534,7 +535,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const relY = Math.max(0, Math.min(1, worldY / worldHRef.current))
 
     let npcId: string | undefined = data.npc_id as string | undefined
-    let maxHp: number | undefined = data.max_hp as number | undefined
+    let maxHp: string | undefined = data.max_hp as string | undefined
     let currentHp: number | undefined = data.current_hp as number | undefined
 
     if (data.bestiary_id) {
@@ -545,7 +546,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         addNpc(npc)
         npcId = npc.id
         maxHp = npc.max_hp
-        currentHp = npc.max_hp
+        currentHp = parseMaxHP(npc.max_hp).numeric
       } catch { }
     }
 

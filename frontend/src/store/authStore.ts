@@ -13,11 +13,12 @@ interface AuthStore {
   user: User | null
   token: string | null
   hydrated: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (login: string, password: string) => Promise<void>
   register: (email: string, username: string, password: string) => Promise<{ requiresVerification: boolean }>
   verifyEmail: (email: string, code: string) => Promise<void>
   logout: () => void
   hydrate: () => Promise<void>
+  setUser: (user: User, token: string) => void
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -25,10 +26,15 @@ export const useAuthStore = create<AuthStore>((set) => ({
   token: null,
   hydrated: false,
 
-  login: async (email, password) => {
-    const { data } = await api.post('/api/v1/auth/login', { email, password })
+  login: async (login, password) => {
+    const { data } = await api.post('/api/v1/auth/login', { login, password })
     setStoredToken(data.token)
     set({ user: data.user, token: data.token })
+  },
+
+  setUser: (user, token) => {
+    setStoredToken(token)
+    set({ user, token })
   },
 
   register: async (email, username, password) => {
