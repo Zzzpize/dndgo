@@ -613,6 +613,82 @@ func (h *Handler) ImportTemplate(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusCreated, toResponse(c))
 }
 
+// /api/v1/characters/{id}/export-template
+func (h *Handler) ExportToTemplate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserID(r)
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid character id", "ERR_BAD_REQUEST")
+		return
+	}
+
+	c, err := h.store.GetCharacterByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusNotFound, "character not found", "ERR_NOT_FOUND")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	if c.UserID != userID {
+		role, roleErr := h.store.GetMemberRoleByRoomID(r.Context(), c.RoomID, userID)
+		if roleErr != nil || role != "dm" {
+			httputil.Error(w, http.StatusForbidden, "access denied", "ERR_FORBIDDEN")
+			return
+		}
+	}
+
+	var req struct {
+		Overwrite bool `json:"overwrite"`
+		Duplicate bool `json:"duplicate"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	input := store.CharacterInput{
+		Name: c.Name, Class: c.Class, Subclass: c.Subclass,
+		Race: c.Race, Subrace: c.Subrace,
+		Level: c.Level, HP: c.MaxHP, MaxHP: c.MaxHP, AC: c.AC, TempHP: 0,
+		Stats: c.Stats, Weapons: c.Weapons, SpellSlots: c.SpellSlots,
+		Abilities: c.Abilities, Inventory: c.Inventory, Notes: c.Notes,
+	}
+
+	existing, lookupErr := h.store.GetTemplateByUserAndName(r.Context(), userID, c.Name)
+	if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	hasConflict := lookupErr == nil
+	if hasConflict && !req.Overwrite && !req.Duplicate {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"template_id": existing.ID.String(),
+			"name":        existing.Name,
+		})
+		return
+	}
+
+	var t store.CharacterTemplate
+	if hasConflict && req.Overwrite {
+		t, err = h.store.UpdateTemplate(r.Context(), existing.ID, input)
+	} else {
+		t, err = h.store.CreateTemplate(r.Context(), userID, input)
+	}
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	httputil.JSON(w, http.StatusOK, toTemplateResponse(t))
+}
+
 // /api/v1/characters/{id}/active
 func (h *Handler) SetActive(w http.ResponseWriter, r *http.Request) {
 	userID, ok := parseUserID(r)

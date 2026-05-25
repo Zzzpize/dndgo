@@ -112,3 +112,10 @@ func (s *Store) DeleteTemplate(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM character_templates WHERE id = $1`, id)
 	return err
 }
+
+func (s *Store) GetTemplateByUserAndName(ctx context.Context, userID uuid.UUID, name string) (CharacterTemplate, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT `+templateColumns+` FROM character_templates
+		WHERE user_id = $1 AND name = $2`, userID, name)
+	return scanTemplate(row)
+}

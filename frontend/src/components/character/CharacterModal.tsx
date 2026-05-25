@@ -172,6 +172,28 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
   const [tempInput, setTempInput] = useState('')
   const [hpBusy, setHpBusy] = useState(false)
 
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportConflict, setExportConflict] = useState<{ template_id: string; name: string } | null>(null)
+  const [exportDone, setExportDone] = useState(false)
+
+  const handleExport = async (opts: { overwrite?: boolean; duplicate?: boolean } = {}) => {
+    if (!character || exportBusy) return
+    setExportBusy(true)
+    setExportConflict(null)
+    try {
+      await api.post(`/api/v1/characters/${character.id}/export-template`, opts)
+      setExportDone(true)
+      setTimeout(() => setExportDone(false), 2500)
+    } catch (err) {
+      const e = err as { response?: { status?: number; data?: { template_id: string; name: string } } }
+      if (e.response?.status === 409 && e.response.data) {
+        setExportConflict(e.response.data)
+      }
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
   const toggleActive = async () => {
     if (!character || saving) return
     setSaving(true)
@@ -414,6 +436,46 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
             >
               {character?.player_active ?? true ? 'Отвязать персонажа от комнаты' : 'Привязать персонажа к комнате'}
             </button>
+          </div>
+        )}
+
+        {!!character && (isOwner || role === 'dm') && (
+          <div className="px-4 pb-2 shrink-0">
+            {exportConflict ? (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs text-parchment/50">Шаблон «{exportConflict.name}» уже существует:</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleExport({ overwrite: true })}
+                    disabled={exportBusy}
+                    className="flex-1 py-1 text-xs bg-gold/20 hover:bg-gold/30 border border-gold/30 text-gold-light rounded font-fantasy transition-colors disabled:opacity-50"
+                  >
+                    Перезаписать
+                  </button>
+                  <button
+                    onClick={() => handleExport({ duplicate: true })}
+                    disabled={exportBusy}
+                    className="flex-1 py-1 text-xs text-parchment/60 hover:text-parchment border border-dark-border rounded font-fantasy transition-colors disabled:opacity-50"
+                  >
+                    Создать дубль
+                  </button>
+                  <button
+                    onClick={() => setExportConflict(null)}
+                    className="px-2 py-1 text-xs text-parchment/30 hover:text-parchment/60 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleExport()}
+                disabled={exportBusy || exportDone}
+                className="w-full py-1.5 rounded text-xs transition-colors disabled:opacity-50 text-parchment/40 hover:text-parchment/70 hover:bg-dark-hover border border-transparent hover:border-dark-border"
+              >
+                {exportDone ? '✓ Сохранено в шаблоны' : exportBusy ? 'Сохранение...' : 'Сохранить в шаблоны'}
+              </button>
+            )}
           </div>
         )}
 

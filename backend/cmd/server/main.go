@@ -166,6 +166,7 @@ func main() {
 			r.Put("/{id}", charHandler.Update)
 			r.Patch("/{id}/hp", charHandler.PatchHP)
 			r.Patch("/{id}/active", charHandler.SetActive)
+			r.Post("/{id}/export-template", charHandler.ExportToTemplate)
 			r.Delete("/{id}", charHandler.Delete)
 		})
 

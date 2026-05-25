@@ -86,7 +86,7 @@ export function DMPanel({ sendMessage, roomCode }: Props) {
         {tab === 'npc' && <NpcTab roomCode={roomCode} onAddToPool={addToPool} />}
         {tab === 'initiative' && <InitiativeTab sendMessage={sendMessage} />}
         {tab === 'map' && <MapTab sendMessage={sendMessage} roomCode={roomCode} />}
-        {tab === 'chars' && <CharsTab roomCode={roomCode} onAddToPool={addToPool} />}
+        {tab === 'chars' && <CharsTab roomCode={roomCode} onAddToPool={addToPool} sendMessage={sendMessage} />}
       </div>
     </div>
   )
@@ -1076,9 +1076,11 @@ function InitiativeTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
 function CharsTab({
   roomCode,
   onAddToPool,
+  sendMessage,
 }: {
   roomCode: string
   onAddToPool: (entry: Omit<PoolEntry, '_key'>) => void
+  sendMessage: (type: string, payload?: unknown) => void
 }) {
   const characters = useGameStore((s) => s.characters)
   const [modalOpen, setModalOpen] = useState(false)
@@ -1159,6 +1161,8 @@ function CharsTab({
         <CharacterModal
           roomCode={roomCode}
           character={editChar ?? undefined}
+          sendMessage={sendMessage}
+          role="dm"
           onClose={() => setModalOpen(false)}
           onSaved={() => setModalOpen(false)}
         />
