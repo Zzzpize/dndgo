@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Character, useGameStore } from '@/store/gameStore'
+import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
 
 interface Props {
@@ -27,6 +28,8 @@ export function CharacterSheet({ character, sendMessage }: Props) {
   const [saving, setSaving] = useState(false)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
   const role = useGameStore((s) => s.role)
+  const myUserId = useAuthStore((s) => s.user?.id)
+  const canEditHP = role === 'dm' || character.user_id === myUserId
   useEffect(() => { setTab('combat') }, [character.id])
 
   const applyHP = async (delta: number) => {
@@ -94,7 +97,7 @@ export function CharacterSheet({ character, sendMessage }: Props) {
         <div className="w-full h-2 bg-dark-border rounded-full overflow-hidden">
           <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct * 100}%` }} />
         </div>
-        {role === 'dm' && (
+        {canEditHP && (
           <>
             <div className="flex gap-1">
               {[-5, -1, 1, 5].map((d) => (

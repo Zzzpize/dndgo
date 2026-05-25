@@ -9,6 +9,7 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { Button } from '@/components/ui/Button'
 import { CharacterSheet } from '@/components/character/CharacterSheet'
 import { CharacterModal } from '@/components/character/CharacterModal'
+import { TemplatePicker } from '@/components/character/TemplatePicker'
 import { NpcSheet } from '@/components/game/NpcSheet'
 import { NpcModal } from '@/components/game/NpcModal'
 import { TokenEditModal } from '@/components/game/TokenEditModal'
@@ -116,6 +117,7 @@ export default function RoomPage() {
   const [loading, setLoading] = useState(true)
   const [showDMPanel, setShowDMPanel] = useState(true)
   const [charModalOpen, setCharModalOpen] = useState(false)
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false)
 
   const { sendMessage } = useWebSocket(code)
 
@@ -225,7 +227,7 @@ export default function RoomPage() {
             <Button
               variant="ghost"
               className="text-xs"
-              onClick={() => setCharModalOpen(true)}
+              onClick={() => myChar ? setCharModalOpen(true) : setTemplatePickerOpen(true)}
             >
               {myChar ? 'Персонаж' : '+ Персонаж'}
             </Button>
@@ -285,8 +287,19 @@ export default function RoomPage() {
         <CharacterModal
           roomCode={code}
           character={myChar ?? undefined}
+          sendMessage={sendMessage}
+          role={role}
           onClose={() => setCharModalOpen(false)}
           onSaved={() => setCharModalOpen(false)}
+        />
+      )}
+
+      {templatePickerOpen && (
+        <TemplatePicker
+          roomCode={code}
+          sendMessage={sendMessage}
+          onClose={() => setTemplatePickerOpen(false)}
+          onImported={() => setTemplatePickerOpen(false)}
         />
       )}
 

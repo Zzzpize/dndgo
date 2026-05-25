@@ -387,7 +387,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         const s = useGameStore.getState()
         const next = token.id === s.selectedTokenId ? null : token.id
         s.setSelectedToken(next)
-        s.setSelectedChar(next && char ? char.id : null)
+        s.setSelectedChar(next && token.character_id ? token.character_id : null)
       })
 
 

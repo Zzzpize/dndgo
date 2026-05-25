@@ -630,10 +630,16 @@ func (h *Hub) SendFullState(ctx context.Context, c *Client, roomID uuid.UUID) {
 		log.Printf("hub: get tokens: %v", err)
 		return
 	}
+	characters, err := h.store.GetCharactersByRoom(ctx, roomID)
+	if err != nil {
+		log.Printf("hub: get characters for full state: %v", err)
+		return
+	}
 
 	state := map[string]any{
-		"game_state": gs,
-		"tokens":     tokens,
+		"game_state":  gs,
+		"tokens":      tokens,
+		"characters":  characters,
 	}
 	data, err := json.Marshal(state)
 	if err != nil {

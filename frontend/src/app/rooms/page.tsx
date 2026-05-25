@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuthStore } from '@/store/authStore'
 import { RoomCard, Room } from '@/components/rooms/RoomCard'
 import { CreateRoomModal } from '@/components/rooms/CreateRoomModal'
@@ -48,7 +49,13 @@ export default function RoomsPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-dark-border bg-dark-card px-6 py-3 flex items-center justify-between">
-        <h1 className="heading-fantasy text-xl">D&D VTT</h1>
+        <div className="flex items-center gap-6">
+          <h1 className="heading-fantasy text-xl">D&D VTT</h1>
+          <nav className="flex items-center gap-4">
+            <span className="text-sm text-gold-light font-fantasy">Комнаты</span>
+            <Link href="/characters" className="text-sm text-parchment/60 hover:text-parchment transition-colors">Персонажи</Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-parchment/60">{user?.username}</span>
           <Button variant="ghost" onClick={logout} className="text-xs">Выйти</Button>

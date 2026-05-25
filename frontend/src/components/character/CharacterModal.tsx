@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ReactNode } from 'react'
 import api from '@/lib/api'
 import { Character, useGameStore } from '@/store/gameStore'
+import { useAuthStore } from '@/store/authStore'
 
 type Tab = 'main' | 'stats' | 'combat' | 'abilities' | 'other'
 
@@ -145,6 +146,8 @@ const STAT_KEYS = ['strength', 'dexterity', 'constitution', 'intelligence', 'wis
 export function CharacterModal({ roomCode, character, sendMessage, role, onClose, onSaved }: Props) {
   const addCharacter = useGameStore((s) => s.addCharacter)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
+  const myUserId = useAuthStore((s) => s.user?.id)
+  const canEditHP = role === 'dm' || (!!character && character.user_id === myUserId)
   const [tab, setTab] = useState<Tab>('main')
   const [form, setForm] = useState<CharForm>(() =>
     character ? fromCharacter(character) : defaultForm()
@@ -194,9 +197,9 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
 
     const numLevel = parseInt(form.level)
     const numMaxHp = parseInt(form.max_hp)
-    const hpSource = (character && role === 'dm') ? character.hp : (form.hp === '' ? 0 : parseInt(form.hp))
+    const hpSource = character ? character.hp : (form.hp === '' ? 0 : parseInt(form.hp))
     const numHp = Math.min(hpSource, numMaxHp)
-    const tempSource = (character && role === 'dm') ? character.temp_hp : (form.temp_hp === '' ? 0 : parseInt(form.temp_hp))
+    const tempSource = character ? character.temp_hp : (form.temp_hp === '' ? 0 : parseInt(form.temp_hp))
     const numTempHp = isNaN(tempSource) ? 0 : tempSource
     const numAc = parseInt(form.ac)
 
@@ -246,10 +249,12 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
         const { data } = await api.put<Character>(`/api/v1/characters/${character.id}`, body)
         saved = data
         updateCharacter(data)
+        sendMessage?.('CHARACTER_UPDATE', data)
       } else {
         const { data } = await api.post<Character>(`/api/v1/rooms/${roomCode}/characters`, body)
         saved = data
         addCharacter(data)
+        sendMessage?.('CHARACTER_UPDATE', data)
       }
       onSaved(saved)
     } catch {
@@ -280,7 +285,7 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
           </button>
         </div>
 
-        {character && role === 'dm' && (
+        {character && (
           <div className="mx-4 mt-3 mb-1 bg-dark rounded border border-dark-border p-3 flex flex-col gap-2 shrink-0">
             <p className="text-xs text-parchment/50 font-fantasy">Текущее состояние</p>
             <div className="flex items-end gap-2">
@@ -290,57 +295,61 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
                 <span className="ml-1 text-sm font-bold text-sky-400 leading-none mb-0.5">+{character.temp_hp} вр.</span>
               )}
             </div>
-            <div className="flex gap-1">
-              {[-5, -1, 1, 5].map((d) => (
-                <button
-                  key={d}
-                  disabled={hpBusy}
-                  onClick={() => applyHP(d)}
-                  className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
-                    d < 0
-                      ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
-                      : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
-                  }`}
-                >
-                  {d > 0 ? `+${d}` : d}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-1">
-              <input
-                type="number"
-                value={hpDelta}
-                onChange={(e) => setHpDelta(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') } }}
-                placeholder="±delta"
-                className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <button
-                onClick={() => { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') }}
-                disabled={hpBusy}
-                className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors disabled:opacity-50"
-              >
-                OK
-              </button>
-            </div>
-            <div className="flex gap-1 items-center">
-              <span className="text-xs text-parchment/40 shrink-0">Врем. HP</span>
-              <input
-                type="number"
-                value={tempInput}
-                onChange={(e) => setTempInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyTempHP() }}
-                placeholder={String(character.temp_hp)}
-                className="flex-1 bg-dark border border-sky-900/40 rounded px-2 py-1 text-xs text-sky-300 placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <button
-                onClick={applyTempHP}
-                disabled={hpBusy}
-                className="px-3 py-1 bg-sky-900/30 hover:bg-sky-900/50 border border-sky-900/40 rounded text-xs text-sky-300 transition-colors disabled:opacity-50"
-              >
-                OK
-              </button>
-            </div>
+            {canEditHP && (
+              <>
+                <div className="flex gap-1">
+                  {[-5, -1, 1, 5].map((d) => (
+                    <button
+                      key={d}
+                      disabled={hpBusy}
+                      onClick={() => applyHP(d)}
+                      className={`flex-1 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 ${
+                        d < 0
+                          ? 'bg-ember/20 text-ember hover:bg-ember/30 border border-ember/30'
+                          : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900/40'
+                      }`}
+                    >
+                      {d > 0 ? `+${d}` : d}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <input
+                    type="number"
+                    value={hpDelta}
+                    onChange={(e) => setHpDelta(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') } }}
+                    placeholder="±delta"
+                    className="flex-1 bg-dark border border-dark-border rounded px-2 py-1 text-xs text-parchment placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <button
+                    onClick={() => { applyHP(parseInt(hpDelta, 10) || 0); setHpDelta('') }}
+                    disabled={hpBusy}
+                    className="px-3 py-1 bg-gold/20 hover:bg-gold/30 border border-gold/30 rounded text-xs text-gold-light transition-colors disabled:opacity-50"
+                  >
+                    OK
+                  </button>
+                </div>
+                <div className="flex gap-1 items-center">
+                  <span className="text-xs text-parchment/40 shrink-0">Врем. HP</span>
+                  <input
+                    type="number"
+                    value={tempInput}
+                    onChange={(e) => setTempInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') applyTempHP() }}
+                    placeholder={String(character.temp_hp)}
+                    className="flex-1 bg-dark border border-sky-900/40 rounded px-2 py-1 text-xs text-sky-300 placeholder-parchment/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <button
+                    onClick={applyTempHP}
+                    disabled={hpBusy}
+                    className="px-3 py-1 bg-sky-900/30 hover:bg-sky-900/50 border border-sky-900/40 rounded text-xs text-sky-300 transition-colors disabled:opacity-50"
+                  >
+                    OK
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -361,7 +370,7 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-          {tab === 'main' && <MainTab form={form} setField={setField} setStat={setStat} hideHpFields={!!(character && role === 'dm')} />}
+          {tab === 'main' && <MainTab form={form} setField={setField} setStat={setStat} hideHpFields={!!character} />}
           {tab === 'stats' && <StatsTab stats={form.stats} setStat={setStat} />}
           {tab === 'combat' && <CombatTab form={form} setField={setField} />}
           {tab === 'abilities' && <AbilitiesTab form={form} setField={setField} />}

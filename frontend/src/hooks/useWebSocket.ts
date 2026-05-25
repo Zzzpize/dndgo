@@ -78,8 +78,15 @@ function dispatch(msg: WsMsg) {
   const s = useGameStore.getState()
   switch (msg.type) {
     case 'FULL_STATE_UPDATE': {
-      const { game_state, tokens } = msg.payload as { game_state: Parameters<typeof s.applyFullState>[0]; tokens: Parameters<typeof s.applyFullState>[1] }
+      const { game_state, tokens, characters } = msg.payload as {
+        game_state: Parameters<typeof s.applyFullState>[0]
+        tokens: Parameters<typeof s.applyFullState>[1]
+        characters?: Parameters<typeof s.setCharacters>[0]
+      }
       s.applyFullState(game_state, tokens ?? [])
+      if (characters?.length && s.characters.length === 0) {
+        s.setCharacters(characters)
+      }
       break
     }
     case 'TOKEN_CREATE':
@@ -137,9 +144,15 @@ function dispatch(msg: WsMsg) {
       s.setMapImage(p.map_image_url, p.map_aspect)
       break
     }
-    case 'CHARACTER_UPDATE':
-      s.updateCharacter(msg.payload as Parameters<typeof s.updateCharacter>[0])
+    case 'CHARACTER_UPDATE': {
+      const char = msg.payload as Parameters<typeof s.updateCharacter>[0]
+      if (s.characters.some((c) => c.id === char.id)) {
+        s.updateCharacter(char)
+      } else {
+        s.addCharacter(char)
+      }
       break
+    }
     case 'DM_PRESENCE':
       s.setDmOnline((msg.payload as { online: boolean }).online)
       break

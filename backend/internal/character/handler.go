@@ -136,6 +136,69 @@ func toResponse(c store.Character) characterResponse {
 	}
 }
 
+type templateResponse struct {
+	ID         string          `json:"id"`
+	UserID     string          `json:"user_id"`
+	Name       string          `json:"name"`
+	Class      string          `json:"class"`
+	Subclass   string          `json:"subclass"`
+	Race       string          `json:"race"`
+	Subrace    string          `json:"subrace"`
+	Level      int             `json:"level"`
+	HP         int             `json:"hp"`
+	MaxHP      int             `json:"max_hp"`
+	AC         int             `json:"ac"`
+	TempHP     int             `json:"temp_hp"`
+	EffectiveAC int            `json:"effective_ac"`
+	Stats      *statsEnriched  `json:"stats"`
+	Weapons    json.RawMessage `json:"weapons"`
+	SpellSlots json.RawMessage `json:"spell_slots"`
+	Abilities  json.RawMessage `json:"abilities"`
+	Inventory  string          `json:"inventory"`
+	Notes      string          `json:"notes"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+}
+
+func toTemplateResponse(t store.CharacterTemplate) templateResponse {
+	var raw statsRaw
+	if len(t.Stats) > 0 {
+		_ = json.Unmarshal(t.Stats, &raw)
+	}
+	enriched := &statsEnriched{
+		statsRaw: raw,
+		StrMod:   modifier(raw.Strength),
+		DexMod:   modifier(raw.Dexterity),
+		ConMod:   modifier(raw.Constitution),
+		IntMod:   modifier(raw.Intelligence),
+		WisMod:   modifier(raw.Wisdom),
+		ChaMod:   modifier(raw.Charisma),
+	}
+	return templateResponse{
+		ID:          t.ID.String(),
+		UserID:      t.UserID.String(),
+		Name:        t.Name,
+		Class:       t.Class,
+		Subclass:    t.Subclass,
+		Race:        t.Race,
+		Subrace:     t.Subrace,
+		Level:       t.Level,
+		HP:          t.HP,
+		MaxHP:       t.MaxHP,
+		AC:          t.AC,
+		TempHP:      t.TempHP,
+		EffectiveAC: t.AC + raw.ShieldBonus,
+		Stats:       enriched,
+		Weapons:     t.Weapons,
+		SpellSlots:  t.SpellSlots,
+		Abilities:   t.Abilities,
+		Inventory:   t.Inventory,
+		Notes:       t.Notes,
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+	}
+}
+
 func parseUserID(r *http.Request) (uuid.UUID, bool) {
 	claims, ok := auth.ClaimsFromContext(r.Context())
 	if !ok {
@@ -353,6 +416,199 @@ func (h *Handler) PatchHP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.JSON(w, http.StatusOK, toResponse(updated))
+}
+
+// /api/v1/characters/templates
+func (h *Handler) ListTemplates(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserID(r)
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
+		return
+	}
+
+	templates, err := h.store.GetTemplatesByUser(r.Context(), userID)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	result := make([]templateResponse, 0, len(templates))
+	for _, t := range templates {
+		result = append(result, toTemplateResponse(t))
+	}
+	httputil.JSON(w, http.StatusOK, result)
+}
+
+// /api/v1/characters/templates
+func (h *Handler) CreateTemplate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserID(r)
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
+		return
+	}
+
+	var req characterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid request body", "ERR_BAD_REQUEST")
+		return
+	}
+	if req.Name == "" {
+		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
+		return
+	}
+
+	t, err := h.store.CreateTemplate(r.Context(), userID, store.CharacterInput{
+		Name: req.Name, Class: req.Class, Subclass: req.Subclass,
+		Race: req.Race, Subrace: req.Subrace,
+		Level: req.Level, HP: req.HP, MaxHP: req.MaxHP, AC: req.AC, TempHP: req.TempHP,
+		Stats: req.Stats, Weapons: req.Weapons, SpellSlots: req.SpellSlots,
+		Abilities: req.Abilities, Inventory: req.Inventory, Notes: req.Notes,
+	})
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	httputil.JSON(w, http.StatusCreated, toTemplateResponse(t))
+}
+
+// /api/v1/characters/templates/{id}
+func (h *Handler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserID(r)
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid template id", "ERR_BAD_REQUEST")
+		return
+	}
+
+	existing, err := h.store.GetTemplateByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusNotFound, "template not found", "ERR_NOT_FOUND")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	if existing.UserID != userID {
+		httputil.Error(w, http.StatusForbidden, "access denied", "ERR_FORBIDDEN")
+		return
+	}
+
+	var req characterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid request body", "ERR_BAD_REQUEST")
+		return
+	}
+	if req.Name == "" {
+		httputil.Error(w, http.StatusBadRequest, "name is required", "ERR_VALIDATION")
+		return
+	}
+
+	updated, err := h.store.UpdateTemplate(r.Context(), id, store.CharacterInput{
+		Name: req.Name, Class: req.Class, Subclass: req.Subclass,
+		Race: req.Race, Subrace: req.Subrace,
+		Level: req.Level, HP: req.HP, MaxHP: req.MaxHP, AC: req.AC, TempHP: req.TempHP,
+		Stats: req.Stats, Weapons: req.Weapons, SpellSlots: req.SpellSlots,
+		Abilities: req.Abilities, Inventory: req.Inventory, Notes: req.Notes,
+	})
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	httputil.JSON(w, http.StatusOK, toTemplateResponse(updated))
+}
+
+// /api/v1/characters/templates/{id}
+func (h *Handler) DeleteTemplate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserID(r)
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid template id", "ERR_BAD_REQUEST")
+		return
+	}
+
+	existing, err := h.store.GetTemplateByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusNotFound, "template not found", "ERR_NOT_FOUND")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	if existing.UserID != userID {
+		httputil.Error(w, http.StatusForbidden, "access denied", "ERR_FORBIDDEN")
+		return
+	}
+
+	if err := h.store.DeleteTemplate(r.Context(), id); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// /api/v1/rooms/{code}/characters/from-template/{templateId}
+func (h *Handler) ImportTemplate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserID(r)
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
+		return
+	}
+
+	code := chi.URLParam(r, "code")
+	room, _, err := h.store.GetRoomMembership(r.Context(), code, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusForbidden, "room not found or access denied", "ERR_FORBIDDEN")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+
+	templateID, err := uuid.Parse(chi.URLParam(r, "templateId"))
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid template id", "ERR_BAD_REQUEST")
+		return
+	}
+
+	tmpl, err := h.store.GetTemplateByID(r.Context(), templateID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusNotFound, "template not found", "ERR_NOT_FOUND")
+			return
+		}
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	if tmpl.UserID != userID {
+		httputil.Error(w, http.StatusForbidden, "access denied", "ERR_FORBIDDEN")
+		return
+	}
+
+	c, err := h.store.CreateCharacter(r.Context(), userID, room.ID, store.CharacterInput{
+		Name: tmpl.Name, Class: tmpl.Class, Subclass: tmpl.Subclass,
+		Race: tmpl.Race, Subrace: tmpl.Subrace,
+		Level: tmpl.Level, HP: tmpl.MaxHP, MaxHP: tmpl.MaxHP, AC: tmpl.AC, TempHP: 0,
+		Stats: tmpl.Stats, Weapons: tmpl.Weapons, SpellSlots: tmpl.SpellSlots,
+		Abilities: tmpl.Abilities, Inventory: tmpl.Inventory, Notes: tmpl.Notes,
+	})
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
+		return
+	}
+	httputil.JSON(w, http.StatusCreated, toResponse(c))
 }
 
 // /api/v1/characters/{id}

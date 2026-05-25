@@ -132,6 +132,7 @@ func main() {
 			r.Post("/{code}/map", gameHandler.UploadMap)
 			r.Post("/{code}/characters", charHandler.Create)
 			r.Get("/{code}/characters", charHandler.ListByRoom)
+			r.Post("/{code}/characters/from-template/{templateId}", charHandler.ImportTemplate)
 			r.Post("/{code}/npcs", npcHandler.Create)
 			r.Post("/{code}/npcs/from-bestiary", npcHandler.CreateFromBestiary)
 			r.Get("/{code}/npcs", npcHandler.ListByRoom)
@@ -155,6 +156,10 @@ func main() {
 
 		r.Route("/characters", func(r chi.Router) {
 			r.Use(auth.JWT(jwtSecret))
+			r.Get("/templates", charHandler.ListTemplates)
+			r.Post("/templates", charHandler.CreateTemplate)
+			r.Put("/templates/{id}", charHandler.UpdateTemplate)
+			r.Delete("/templates/{id}", charHandler.DeleteTemplate)
 			r.Get("/{id}", charHandler.Get)
 			r.Put("/{id}", charHandler.Update)
 			r.Patch("/{id}/hp", charHandler.PatchHP)
