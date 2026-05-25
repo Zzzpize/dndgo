@@ -22,8 +22,12 @@ export default function RegisterPage() {
     setLoading(true)
     setError('')
     try {
-      await register(email, username, password)
-      router.push('/rooms')
+      const result = await register(email, username, password)
+      if (result.requiresVerification) {
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`)
+      } else {
+        router.push('/rooms')
+      }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(msg || 'Ошибка регистрации')

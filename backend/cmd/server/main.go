@@ -21,6 +21,7 @@ import (
 
 	"github.com/zzzpize/dndgo/backend/internal/auth"
 	"github.com/zzzpize/dndgo/backend/internal/bestiary"
+	"github.com/zzzpize/dndgo/backend/internal/email"
 	"github.com/zzzpize/dndgo/backend/internal/character"
 	"github.com/zzzpize/dndgo/backend/internal/game"
 	"github.com/zzzpize/dndgo/backend/internal/hub"
@@ -75,7 +76,8 @@ func main() {
 
 	wsHub := hub.NewHub(st)
 
-	authHandler := auth.NewHandler(st, jwtSecret)
+	emailSender := email.NewSender(os.Getenv("RESEND_API_KEY"), os.Getenv("RESEND_FROM"))
+	authHandler := auth.NewHandler(st, jwtSecret, emailSender)
 	gameHandler := game.NewHandler(st, wsHub, staticDir, publicURL)
 	charHandler := character.NewHandler(st)
 	npcHandler := npc.NewHandler(st)
@@ -104,8 +106,13 @@ func main() {
 		r.Route("/auth", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
 				r.Use(appmw.RateLimit(20, time.Second))
-				r.Post("/register", authHandler.Register)
 				r.Post("/login", authHandler.Login)
+				r.Post("/verify", authHandler.VerifyEmail)
+				r.Post("/resend-verification", authHandler.ResendVerification)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(appmw.RateLimit(5, time.Hour))
+				r.Post("/register", authHandler.Register)
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(auth.JWT(jwtSecret))

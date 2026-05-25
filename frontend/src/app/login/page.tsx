@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [unverifiedEmail, setUnverifiedEmail] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -23,8 +24,15 @@ export default function LoginPage() {
       await login(email, password)
       router.push('/rooms')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg || 'Неверный email или пароль')
+      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
+      if (code === 'ERR_EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(email)
+        setError('Email не подтверждён')
+      } else {
+        setUnverifiedEmail('')
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        setError(msg || 'Неверный email или пароль')
+      }
     } finally {
       setLoading(false)
     }
@@ -56,7 +64,17 @@ export default function LoginPage() {
           />
 
           {error && (
-            <p className="text-sm text-ember bg-ember/10 border border-ember/30 px-3 py-2">{error}</p>
+            <div className="text-sm text-ember bg-ember/10 border border-ember/30 px-3 py-2">
+              <p>{error}</p>
+              {unverifiedEmail && (
+                <Link
+                  href={`/verify-email?email=${encodeURIComponent(unverifiedEmail)}`}
+                  className="underline hover:text-ember/80 mt-1 inline-block"
+                >
+                  Подтвердить email →
+                </Link>
+              )}
+            </div>
           )}
 
           <Button type="submit" loading={loading} className="w-full mt-2">

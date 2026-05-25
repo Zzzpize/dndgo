@@ -14,7 +14,8 @@ interface AuthStore {
   token: string | null
   hydrated: boolean
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, username: string, password: string) => Promise<void>
+  register: (email: string, username: string, password: string) => Promise<{ requiresVerification: boolean }>
+  verifyEmail: (email: string, code: string) => Promise<void>
   logout: () => void
   hydrate: () => Promise<void>
 }
@@ -32,6 +33,16 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   register: async (email, username, password) => {
     const { data } = await api.post('/api/v1/auth/register', { email, username, password })
+    if (data.verification_required) {
+      return { requiresVerification: true }
+    }
+    setStoredToken(data.token)
+    set({ user: data.user, token: data.token })
+    return { requiresVerification: false }
+  },
+
+  verifyEmail: async (email, code) => {
+    const { data } = await api.post('/api/v1/auth/verify', { email, code })
     setStoredToken(data.token)
     set({ user: data.user, token: data.token })
   },
