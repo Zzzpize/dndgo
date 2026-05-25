@@ -45,18 +45,30 @@ func (s *Store) GetNpcFoldersByRoom(ctx context.Context, roomID uuid.UUID) ([]Np
 	return folders, rows.Err()
 }
 
-func (s *Store) RenameNpcFolder(ctx context.Context, id uuid.UUID, name string) (NpcFolder, error) {
+func (s *Store) RenameNpcFolder(ctx context.Context, id uuid.UUID, name string, userID uuid.UUID) (NpcFolder, error) {
 	var f NpcFolder
 	err := s.pool.QueryRow(ctx,
-		`UPDATE npc_folders SET name = $1 WHERE id = $2 RETURNING id, room_id, name, created_at`,
-		name, id,
+		`UPDATE npc_folders SET name = $1 WHERE id = $2
+		 AND EXISTS (SELECT 1 FROM room_members WHERE room_id = npc_folders.room_id AND user_id = $3)
+		 RETURNING id, room_id, name, created_at`,
+		name, id, userID,
 	).Scan(&f.ID, &f.RoomID, &f.Name, &f.CreatedAt)
 	return f, err
 }
 
-func (s *Store) DeleteNpcFolder(ctx context.Context, id uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM npc_folders WHERE id = $1`, id)
-	return err
+func (s *Store) DeleteNpcFolder(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM npc_folders WHERE id = $1
+		 AND EXISTS (SELECT 1 FROM room_members WHERE room_id = npc_folders.room_id AND user_id = $2)`,
+		id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) SetNPCFolder(ctx context.Context, npcID uuid.UUID, folderID *uuid.UUID) error {

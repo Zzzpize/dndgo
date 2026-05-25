@@ -31,6 +31,7 @@ services:
       PUBLIC_URL: http://localhost
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     ports:
       - "8080:8080"
     volumes:

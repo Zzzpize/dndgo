@@ -553,9 +553,12 @@ func (h *Handler) RenameFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = userID
-	f, err := h.store.RenameNpcFolder(r.Context(), id, body.Name)
+	f, err := h.store.RenameNpcFolder(r.Context(), id, body.Name, userID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) || errors.Is(err, pgx.ErrNoRows) {
+			httputil.Error(w, http.StatusForbidden, "folder not found or access denied", "ERR_FORBIDDEN")
+			return
+		}
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
 		return
 	}
@@ -569,15 +572,17 @@ func (h *Handler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusUnauthorized, "invalid token", "ERR_UNAUTHORIZED")
 		return
 	}
-	_ = userID
-
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, "invalid folder id", "ERR_BAD_REQUEST")
 		return
 	}
 
-	if err := h.store.DeleteNpcFolder(r.Context(), id); err != nil {
+	if err := h.store.DeleteNpcFolder(r.Context(), id, userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httputil.Error(w, http.StatusForbidden, "folder not found or access denied", "ERR_FORBIDDEN")
+			return
+		}
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
 		return
 	}

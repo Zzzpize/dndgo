@@ -84,8 +84,12 @@ func main() {
 	bestiaryHandler := bestiary.NewHandler(st)
 
 	r := chi.NewRouter()
+	allowedOrigins := []string{"http://localhost:3000", "http://localhost"}
+	if v := os.Getenv("ALLOWED_ORIGINS"); v != "" {
+		allowedOrigins = strings.Split(v, ",")
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		AllowCredentials: false,

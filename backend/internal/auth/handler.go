@@ -2,12 +2,14 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	mrand "math/rand/v2"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -65,18 +67,38 @@ func generateResetToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func hashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
+func validEmail(s string) bool {
+	_, err := mail.ParseAddress(s)
+	return err == nil
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.Error(w, http.StatusBadRequest, "invalid request body", "ERR_BAD_REQUEST")
 		return
 	}
+	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.TrimSpace(req.Email)
 	if req.Email == "" || req.Username == "" || req.Password == "" {
 		httputil.Error(w, http.StatusBadRequest, "email, username and password are required", "ERR_VALIDATION")
 		return
 	}
-	if len(req.Password) < 8 {
-		httputil.Error(w, http.StatusBadRequest, "password must be at least 8 characters", "ERR_VALIDATION")
+	if !validEmail(req.Email) {
+		httputil.Error(w, http.StatusBadRequest, "invalid email address", "ERR_VALIDATION")
+		return
+	}
+	if len(req.Username) < 3 || len(req.Username) > 64 {
+		httputil.Error(w, http.StatusBadRequest, "username must be 3–64 characters", "ERR_VALIDATION")
+		return
+	}
+	if len(req.Password) < 8 || len(req.Password) > 128 {
+		httputil.Error(w, http.StatusBadRequest, "password must be 8–128 characters", "ERR_VALIDATION")
 		return
 	}
 
@@ -277,7 +299,7 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expires := time.Now().Add(time.Hour)
-	if err := h.store.CreatePasswordResetToken(r.Context(), user.ID, token, expires); err != nil {
+	if err := h.store.CreatePasswordResetToken(r.Context(), user.ID, hashToken(token), expires); err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
 		return
 	}
@@ -301,7 +323,7 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := h.store.UsePasswordResetToken(r.Context(), req.Token)
+	userID, err := h.store.UsePasswordResetToken(r.Context(), hashToken(req.Token))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.Error(w, http.StatusUnauthorized, "invalid or expired token", "ERR_INVALID_TOKEN")
@@ -337,6 +359,11 @@ func (h *Handler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" || req.Password == "" {
 		httputil.Error(w, http.StatusBadRequest, "username and password are required", "ERR_VALIDATION")
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if len(req.Username) < 3 || len(req.Username) > 64 {
+		httputil.Error(w, http.StatusBadRequest, "username must be 3–64 characters", "ERR_VALIDATION")
 		return
 	}
 
@@ -385,6 +412,11 @@ func (h *Handler) RequestEmailChange(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.Password == "" {
 		httputil.Error(w, http.StatusBadRequest, "email and password are required", "ERR_VALIDATION")
+		return
+	}
+	req.Email = strings.TrimSpace(req.Email)
+	if !validEmail(req.Email) {
+		httputil.Error(w, http.StatusBadRequest, "invalid email address", "ERR_VALIDATION")
 		return
 	}
 
