@@ -3,6 +3,7 @@
 .env.*.local
 
 data/
+!data/.gitkeep
 
 backend/vendor/
 backend/*.exe

@@ -284,7 +284,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       return
     }
 
-    const fogOpacity = role === 'dm' ? 0.45 : 0.92
+    const fogOpacity = role === 'dm' ? 0.45 : 1
     const worldH = worldHRef.current
     const paths = gameState?.fog_paths ?? []
 

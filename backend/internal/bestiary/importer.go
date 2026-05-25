@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -111,9 +112,21 @@ func runSeed(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	defer conn.Release()
 
-	mrr := conn.Conn().PgConn().Exec(ctx, string(seedSQL))
+	lines := strings.Split(string(seedSQL), "\n")
+	filtered := lines[:0]
+	for _, l := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(l), `\`) {
+			filtered = append(filtered, l)
+		}
+	}
+	sql := strings.Join(filtered, "\n")
+
+	mrr := conn.Conn().PgConn().Exec(ctx, sql)
 	if err := mrr.Close(); err != nil {
 		return fmt.Errorf("run seed: %w", err)
+	}
+	if _, err := conn.Exec(ctx, "SET search_path = public"); err != nil {
+		return fmt.Errorf("restore search_path: %w", err)
 	}
 	log.Printf("bestiary: embedded seed imported successfully")
 	return nil
