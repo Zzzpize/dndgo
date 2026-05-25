@@ -210,6 +210,20 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
       setError('Макс. HP: введите число (напр., 20 или 20 (2d10+8)) или Inf'); return
     }
 
+    if (token && sendMessage && npc) {
+      const clampedHp = maxHpIsInf ? (token.current_hp ?? 0) : Math.min(token.current_hp ?? numMaxHp, numMaxHp)
+      sendMessage('TOKEN_EDIT', {
+        id: token.id,
+        name: token.name,
+        disposition: form.disposition,
+        max_hp: form.max_hp.trim(),
+        current_hp: clampedHp,
+        temp_hp: token.temp_hp,
+      })
+      onSaved(npc)
+      return
+    }
+
     const abilityKeys = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
     for (const key of abilityKeys) {
       const v = parseInt(form.abilities[key])
@@ -272,17 +286,6 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
         const { data } = await api.post<NPC>(`/api/v1/rooms/${roomCode}/npcs`, body)
         saved = data
         addNpc(data)
-      }
-      if (token && sendMessage) {
-        const clampedHp = maxHpIsInf ? (token.current_hp ?? 0) : Math.min(token.current_hp ?? numMaxHp, numMaxHp)
-        sendMessage('TOKEN_EDIT', {
-          id: token.id,
-          name: token.name,
-          disposition: token.disposition,
-          max_hp: form.max_hp.trim(),
-          current_hp: clampedHp,
-          temp_hp: token.temp_hp,
-        })
       }
       onSaved(saved)
     } catch {
