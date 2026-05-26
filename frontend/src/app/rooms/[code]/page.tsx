@@ -35,7 +35,7 @@ function ToolBar() {
           key={key}
           title={title}
           onClick={() => setActiveTool(key)}
-          className={`w-9 h-9 flex items-center justify-center rounded border text-base transition-colors ${
+          className={`w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded border text-lg md:text-base transition-colors ${
             activeTool === key
               ? 'bg-gold/30 border-gold text-gold-light'
               : 'bg-dark-card/80 border-dark-border text-parchment/50 hover:text-parchment/80 hover:border-dark-border/80'
@@ -172,15 +172,15 @@ export default function RoomPage() {
   return (
     <div className="flex flex-col h-screen bg-dark overflow-hidden">
       <header className="border-b border-dark-border bg-dark-card px-4 py-2 flex items-center justify-between shrink-0 h-12">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => router.push('/rooms')}
-            className="text-parchment/40 hover:text-parchment/70 text-sm transition-colors"
+            className="text-parchment/40 hover:text-parchment/70 text-sm transition-colors shrink-0"
           >
             ← Назад
           </button>
-          <span className="text-dark-border">|</span>
-          <h1 className="heading-fantasy text-base">{storeRoomName ?? room?.name ?? code}</h1>
+          <span className="hidden sm:inline text-dark-border">|</span>
+          <h1 className="heading-fantasy text-base truncate max-w-[140px] md:max-w-none">{storeRoomName ?? room?.name ?? code}</h1>
           {role && (
             <span
               className={`text-xs px-2 py-0.5 rounded font-fantasy ${
@@ -194,7 +194,7 @@ export default function RoomPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <span
             className={`text-xs flex items-center gap-1.5 ${
               role === 'player'
@@ -209,18 +209,21 @@ export default function RoomPage() {
                   : (isConnected ? 'bg-green-400' : 'bg-ember animate-pulse')
               }`}
             />
-            {role === 'player'
-              ? (isDmOnline ? 'ДМ в комнате' : 'ДМ отсутствует')
-              : (isConnected ? 'Подключено' : 'Переподключение...')}
+            <span className="hidden sm:inline">
+              {role === 'player'
+                ? (isDmOnline ? 'ДМ в комнате' : 'ДМ отсутствует')
+                : (isConnected ? 'Подключено' : 'Переподключение...')}
+            </span>
           </span>
-          <span className="text-sm text-parchment/50">{user?.username}</span>
+          <span className="hidden sm:inline text-sm text-parchment/50">{user?.username}</span>
           {role === 'dm' && (
             <Button
               variant="ghost"
               className="text-xs"
               onClick={() => setShowDMPanel((v) => !v)}
             >
-              {showDMPanel ? 'Скрыть панель' : 'Панель ДМ'}
+              <span className="hidden sm:inline">{showDMPanel ? 'Скрыть панель' : 'Панель ДМ'}</span>
+              <span className="sm:hidden">{showDMPanel ? '✕' : '☰'}</span>
             </Button>
           )}
           {role === 'player' && (
@@ -245,41 +248,61 @@ export default function RoomPage() {
         </div>
 
         {role === 'dm' && showDMPanel && (
-          <DMPanel sendMessage={sendMessage} roomCode={code} />
+          <>
+            <div
+              className="fixed inset-0 bg-black/60 z-30 md:hidden"
+              onClick={() => setShowDMPanel(false)}
+            />
+            <div className="fixed inset-0 z-40 md:static md:inset-auto md:z-auto shrink-0">
+              <DMPanel sendMessage={sendMessage} roomCode={code} />
+            </div>
+          </>
         )}
 
         {selectedCharId && selectedChar && (
-          <div className="w-80 border-l border-dark-border bg-dark-card flex flex-col overflow-hidden">
-            <div className="px-3 py-2 flex items-center justify-between border-b border-dark-border shrink-0">
-              <span className="text-xs font-fantasy text-gold-light">Лист персонажа</span>
-              <button
-                onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
-                className="text-parchment/40 hover:text-parchment/70 text-sm w-6 h-6 flex items-center justify-center"
-              >
-                ✕
-              </button>
+          <>
+            <div
+              className="fixed inset-0 bg-black/60 z-30 md:hidden"
+              onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
+            />
+            <div className="fixed inset-0 z-40 md:static md:inset-auto md:z-auto md:w-80 border-l border-dark-border bg-dark-card flex flex-col overflow-hidden">
+              <div className="px-3 py-2 flex items-center justify-between border-b border-dark-border shrink-0">
+                <span className="text-xs font-fantasy text-gold-light">Лист персонажа</span>
+                <button
+                  onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
+                  className="text-parchment/40 hover:text-parchment/70 text-sm w-8 h-8 flex items-center justify-center"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                <CharacterSheet character={selectedChar} sendMessage={sendMessage} />
+              </div>
             </div>
-            <div className="overflow-y-auto flex-1">
-              <CharacterSheet character={selectedChar} sendMessage={sendMessage} />
-            </div>
-          </div>
+          </>
         )}
 
         {selectedTokenId && selectedNpc && selectedToken && !selectedCharId && (
-          <div className="w-80 border-l border-dark-border bg-dark-card flex flex-col overflow-hidden">
-            <div className="px-3 py-2 flex items-center justify-between border-b border-dark-border shrink-0">
-              <span className="text-xs font-fantasy text-ember">НПС</span>
-              <button
-                onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
-                className="text-parchment/40 hover:text-parchment/70 text-sm w-6 h-6 flex items-center justify-center"
-              >
-                ✕
-              </button>
+          <>
+            <div
+              className="fixed inset-0 bg-black/60 z-30 md:hidden"
+              onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
+            />
+            <div className="fixed inset-0 z-40 md:static md:inset-auto md:z-auto md:w-80 border-l border-dark-border bg-dark-card flex flex-col overflow-hidden">
+              <div className="px-3 py-2 flex items-center justify-between border-b border-dark-border shrink-0">
+                <span className="text-xs font-fantasy text-ember">НПС</span>
+                <button
+                  onClick={() => { setSelectedChar(null); setSelectedToken(null) }}
+                  className="text-parchment/40 hover:text-parchment/70 text-sm w-8 h-8 flex items-center justify-center"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                <NpcSheet npc={selectedNpc} token={selectedToken} sendMessage={sendMessage} role={role} />
+              </div>
             </div>
-            <div className="overflow-y-auto flex-1">
-              <NpcSheet npc={selectedNpc} token={selectedToken} sendMessage={sendMessage} role={role} />
-            </div>
-          </div>
+          </>
         )}
       </div>
 

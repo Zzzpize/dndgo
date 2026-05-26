@@ -48,29 +48,29 @@ export default function RoomsPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-dark-border bg-dark-card px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-6">
+      <header className="border-b border-dark-border bg-dark-card px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3 sm:gap-6">
           <h1 className="heading-fantasy text-xl">D&D VTT</h1>
-          <nav className="flex items-center gap-4">
+          <nav className="flex items-center gap-3 sm:gap-4">
             <span className="text-sm text-gold-light font-fantasy">Комнаты</span>
             <Link href="/characters" className="text-sm text-parchment/60 hover:text-parchment transition-colors">Персонажи</Link>
           </nav>
         </div>
-        <div className="flex items-center gap-4">
-          <Link href="/account" className="text-sm text-parchment/60 hover:text-parchment transition-colors">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <Link href="/account" className="hidden sm:inline text-sm text-parchment/60 hover:text-parchment transition-colors">
             {user?.username}
           </Link>
           <Button variant="ghost" onClick={logout} className="text-xs">Выйти</Button>
         </div>
       </header>
 
-      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <h2 className="heading-fantasy text-2xl">Мои комнаты</h2>
             <p className="text-parchment/50 text-sm mt-1">Ваши игровые сессии</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 shrink-0">
             <Button variant="secondary" onClick={() => setShowJoin(true)}>Войти по коду</Button>
             <Button onClick={() => setShowCreate(true)}>Создать комнату</Button>
           </div>

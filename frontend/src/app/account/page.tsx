@@ -126,7 +126,7 @@ export default function AccountPage() {
   }
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen p-4 sm:p-8">
       <div className="max-w-lg mx-auto flex flex-col gap-2 mb-8">
         <div className="flex items-center justify-between">
           <h1 className="heading-fantasy text-2xl">Настройки аккаунта</h1>

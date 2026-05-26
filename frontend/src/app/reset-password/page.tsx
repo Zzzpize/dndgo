@@ -77,8 +77,8 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="w-full max-w-md bg-dark-card border border-dark-border p-8">
+    <main className="flex min-h-screen items-center justify-center p-4 sm:p-8">
+      <div className="w-full max-w-md bg-dark-card border border-dark-border p-6 sm:p-8">
         <h1 className="heading-fantasy text-3xl mb-2 text-center">Новый пароль</h1>
         <hr className="divider-gold mb-6" />
         <Suspense fallback={<p className="text-parchment/30 text-center animate-pulse">Загрузка...</p>}>

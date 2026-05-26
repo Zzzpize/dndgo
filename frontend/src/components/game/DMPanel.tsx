@@ -64,7 +64,7 @@ export function DMPanel({ sendMessage, roomCode }: Props) {
   ]
 
   return (
-    <div className="w-72 border-l border-dark-border bg-dark-card flex flex-col overflow-hidden shrink-0">
+    <div className="w-full md:w-72 h-full border-l border-dark-border bg-dark-card flex flex-col overflow-hidden shrink-0">
       <div className="flex border-b border-dark-border shrink-0">
         {tabs.map(({ key, label }) => (
           <button

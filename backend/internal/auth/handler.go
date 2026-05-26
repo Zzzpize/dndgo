@@ -108,7 +108,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If unverified account with this email exists, just resend the code
 	if existing, err := h.store.GetUserByEmail(r.Context(), req.Email); err == nil && !existing.EmailVerified {
 		if h.email.Enabled() {
 			code := generateVerifyCode()
@@ -252,7 +251,6 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.store.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
-		// Don't reveal whether the email exists
 		httputil.JSON(w, http.StatusOK, map[string]string{"message": "if the email exists, a new code was sent"})
 		return
 	}
@@ -280,7 +278,6 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Always return 200 to not reveal whether email exists
 	user, err := h.store.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		httputil.JSON(w, http.StatusOK, map[string]string{"message": "if the email exists, a reset link was sent"})

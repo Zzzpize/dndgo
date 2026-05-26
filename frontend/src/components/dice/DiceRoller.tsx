@@ -60,16 +60,16 @@ export function DiceRoller({ sendMessage }: Props) {
   }
 
   return (
-    <div className="border-t border-dark-border bg-dark-card px-3 py-2 flex items-center gap-2 shrink-0">
-      <span className="text-parchment/30 text-xs font-fantasy shrink-0">Бросок:</span>
+    <div className="border-t border-dark-border bg-dark-card px-3 py-2 flex items-center gap-2 shrink-0 overflow-x-auto">
+      <span className="text-parchment/30 text-xs font-fantasy shrink-0 hidden sm:inline">Бросок:</span>
 
-      <div className="flex gap-1">
+      <div className="flex gap-1 shrink-0">
         {QUICK_DICE.map((d) => (
           <button
             key={d}
             onClick={() => roll(d)}
             disabled={!canRoll}
-            className="px-2 py-0.5 text-xs font-fantasy bg-dark hover:bg-dark-hover border border-dark-border hover:border-gold/40 rounded text-parchment/60 hover:text-gold-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-2 py-1 md:py-0.5 text-xs font-fantasy bg-dark hover:bg-dark-hover border border-dark-border hover:border-gold/40 rounded text-parchment/60 hover:text-gold-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
             {d}
           </button>
