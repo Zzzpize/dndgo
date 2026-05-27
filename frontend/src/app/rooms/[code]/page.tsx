@@ -30,9 +30,9 @@ const PLAYER_TOOLS: { key: Tool; icon: string; title: string }[] = [
 ]
 
 function InitiativeOverlay() {
-  const order = useGameStore((s) => s.gameState?.initiative_order ?? [])
+  const order = useGameStore((s) => s.gameState?.initiative_order ?? null)
   const activeInitIndex = useGameStore((s) => s.activeInitIndex)
-  if (order.length === 0) return null
+  if (!order || order.length === 0) return null
   return (
     <div className="absolute top-3 right-3 z-20 flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
       {order.map((e, i) => {
