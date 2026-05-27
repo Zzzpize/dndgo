@@ -12,7 +12,6 @@ interface Props {
   roomCode: string
 }
 
-
 const WORLD_W = 1000
 
 const DISPOSITION_COLOR: Record<string, string> = {
@@ -39,8 +38,11 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
   const rulerStartRef = useRef<{ x: number; y: number } | null>(null)
   const lastFogCellRef = useRef<string>('')
   const lastDragSendRef = useRef(0)
-  const isDraggingRef = useRef(false)
+  const draggingTokenIdRef = useRef<string | null>(null)
   const worldHRef = useRef(WORLD_W)
+  const tokenGroupsRef = useRef(new Map<string, Konva.Group>())
+  const isPinchingRef = useRef(false)
+  const lastPinchDistRef = useRef(0)
 
   const myUserId = useAuthStore((s) => s.user?.id)
   const tokens = useGameStore((s) => s.tokens)
@@ -158,6 +160,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     })
 
     stage.on('mousedown touchstart', (e) => {
+      if (isPinchingRef.current) return
       const tool = activeToolRef.current
       if (tool === 'fog') {
         e.evt.preventDefault()
@@ -181,6 +184,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     })
 
     stage.on('mousemove touchmove', (e) => {
+      if (isPinchingRef.current) return
       const tool = activeToolRef.current
       if (tool === 'fog' && isPaintingRef.current) {
         e.evt.preventDefault()
@@ -208,6 +212,58 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       }
     })
 
+    function getTouchDist(e: TouchEvent) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      return Math.sqrt(dx * dx + dy * dy)
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      if (e.touches.length !== 2) return
+      isPinchingRef.current = true
+      lastPinchDistRef.current = getTouchDist(e)
+      stageRef.current?.draggable(false)
+      e.preventDefault()
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (!isPinchingRef.current || e.touches.length !== 2) return
+      e.preventDefault()
+      const dist = getTouchDist(e)
+      const factor = dist / lastPinchDistRef.current
+      lastPinchDistRef.current = dist
+      const s = stageRef.current
+      if (!s) return
+      const oldScale = s.scaleX()
+      const newScale = Math.max(0.1, Math.min(10, oldScale * factor))
+      const rect = container.getBoundingClientRect()
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+      const mousePointTo = {
+        x: (midX - s.x()) / oldScale,
+        y: (midY - s.y()) / oldScale,
+      }
+      s.scale({ x: newScale, y: newScale })
+      s.position({
+        x: midX - mousePointTo.x * newScale,
+        y: midY - mousePointTo.y * newScale,
+      })
+      s.batchDraw()
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      if (e.touches.length < 2) {
+        isPinchingRef.current = false
+        if (activeToolRef.current === 'pointer') {
+          stageRef.current?.draggable(true)
+        }
+      }
+    }
+
+    container.addEventListener('touchstart', onTouchStart, { passive: false })
+    container.addEventListener('touchmove', onTouchMove, { passive: false })
+    container.addEventListener('touchend', onTouchEnd)
+
     const obs = new ResizeObserver(([entry]) => {
       const w = Math.floor(entry.contentRect.width)
       const h = Math.floor(entry.contentRect.height)
@@ -220,9 +276,13 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
 
     return () => {
       obs.disconnect()
+      container.removeEventListener('touchstart', onTouchStart)
+      container.removeEventListener('touchmove', onTouchMove)
+      container.removeEventListener('touchend', onTouchEnd)
       stage.destroy()
       stageRef.current = null
       layersRef.current = null
+      tokenGroupsRef.current.clear()
     }
   }, [revealFogAtPointer, hideFogAtPointer])
 
@@ -319,15 +379,23 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
   }, [gameState?.fog_paths, gameState?.fog_cleared, gameState?.map_aspect, role])
 
   useEffect(() => {
-    if (isDraggingRef.current) return
     const layer = layersRef.current?.tokens
     if (!layer) return
-    layer.destroyChildren()
 
     const charMap = new Map(characters.map((c) => [c.id, c]))
     const gridSize = gameState?.grid_size ?? 50
-    const tokenRadius = Math.max(14, Math.min(gridSize * 0.4, 28))
     const initiativeOrder = gameState?.initiative_order ?? []
+
+
+    const tokenIds = new Set(tokens.map((t) => t.id))
+    const toRemove: string[] = []
+    for (const id of tokenGroupsRef.current.keys()) {
+      if (!tokenIds.has(id)) toRemove.push(id)
+    }
+    for (const id of toRemove) {
+      tokenGroupsRef.current.get(id)?.destroy()
+      tokenGroupsRef.current.delete(id)
+    }
 
     for (const token of tokens) {
       const char = token.character_id ? charMap.get(token.character_id) : undefined
@@ -336,12 +404,13 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       const activeEntry = initiativeOrder[activeInitIndex % Math.max(initiativeOrder.length, 1)]
       const isActive = initiativeOrder.length > 0 && !!activeEntry?.token_id && activeEntry.token_id === token.id
       const isSelected = token.id === selectedTokenId
-      const canDrag = role === 'dm' || (
+      const canDrag = activeTool === 'pointer' && (role === 'dm' || (
         token.token_type === 'pc' &&
         char?.user_id === myUserId &&
         (char?.player_active ?? true) &&
         (gameState?.player_can_move_token ?? true)
-      )
+      ))
+      const tokenRadius = Math.max(10, gridSize * (token.size ?? 1) * 0.45)
       const color = token.token_type === 'pc' ? PC_COLOR : (DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral)
 
       const hpPct = char
@@ -351,7 +420,17 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
           : null
       const isDead = hpPct === 0
 
-      const group = new Konva.Group({ x, y, draggable: canDrag })
+      let group = tokenGroupsRef.current.get(token.id)
+      if (!group) {
+        group = new Konva.Group({ x, y })
+        tokenGroupsRef.current.set(token.id, group)
+        layer.add(group)
+      } else if (token.id !== draggingTokenIdRef.current) {
+        group.position({ x, y })
+      }
+      group.draggable(canDrag)
+
+      group.destroyChildren()
 
       if (isSelected) {
         group.add(new Konva.Circle({ radius: tokenRadius + 7, stroke: '#f4e4bc', strokeWidth: 1.5, fill: 'transparent' }))
@@ -385,6 +464,8 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         shadowEnabled: true,
       }))
 
+      group.off('click tap dragstart dragmove dragend')
+
       group.on('click tap', (e) => {
         e.cancelBubble = true
         const s = useGameStore.getState()
@@ -393,31 +474,30 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         s.setSelectedChar(next && token.character_id ? token.character_id : null)
       })
 
-
       group.on('dragstart', () => {
         stageRef.current?.draggable(false)
         lastDragSendRef.current = 0
-        isDraggingRef.current = true
+        draggingTokenIdRef.current = token.id
       })
 
       group.on('dragmove', () => {
         const now = Date.now()
         if (now - lastDragSendRef.current < 50) return
         lastDragSendRef.current = now
-        const nx = Math.max(0, Math.min(1, group.x() / WORLD_W))
-        const ny = Math.max(0, Math.min(1, group.y() / worldHRef.current))
+        const nx = Math.max(0, Math.min(1, group!.x() / WORLD_W))
+        const ny = Math.max(0, Math.min(1, group!.y() / worldHRef.current))
         sendMessageRef.current('TOKEN_DRAG', { id: token.id, rel_x: nx, rel_y: ny })
         if (token.token_type === 'pc') {
           const s = useGameStore.getState()
           if (!s.gameState?.fog_cleared && (s.gameState?.player_can_reveal_fog ?? true)) {
-            const gridSize = s.gameState?.grid_size ?? 50
-            sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gridSize / 5) * 30 }])
+            const gs = s.gameState?.grid_size ?? 50
+            sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gs / 5) * 30 }])
           }
         }
       })
 
       group.on('dragend', (e) => {
-        isDraggingRef.current = false
+        draggingTokenIdRef.current = null
         if (activeToolRef.current === 'pointer') {
           stageRef.current?.draggable(true)
         }
@@ -430,15 +510,13 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
           const s = useGameStore.getState()
           if (s.gameState?.fog_cleared) return
           if (!(s.gameState?.player_can_reveal_fog ?? true)) return
-          const gridSize = s.gameState?.grid_size ?? 50
-          sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gridSize / 5) * 30 }])
+          const gs = s.gameState?.grid_size ?? 50
+          sendMessageRef.current('FOG_REVEAL', [{ rel_x: nx, rel_y: ny, radius: (gs / 5) * 30 }])
         }
       })
-
-      layer.add(group)
     }
     layer.batchDraw()
-  }, [tokens, characters, gameState?.grid_size, gameState?.initiative_order, gameState?.map_aspect, activeInitIndex, selectedTokenId, role, myUserId])
+  }, [tokens, characters, gameState?.grid_size, gameState?.initiative_order, gameState?.map_aspect, gameState?.player_can_move_token, activeInitIndex, selectedTokenId, role, myUserId, activeTool])
 
   useEffect(() => {
     const layer = layersRef.current?.ruler
@@ -487,8 +565,8 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const worldY = (e.clientY - rect.top - pos.y) / scale
     const s = useGameStore.getState()
     const gridSize = s.gameState?.grid_size ?? 50
-    const tokenRadius = Math.max(14, Math.min(gridSize * 0.4, 28))
     for (const token of s.tokens) {
+      const tokenRadius = Math.max(10, gridSize * (token.size ?? 1) * 0.45)
       const tx = token.rel_x * WORLD_W
       const ty = token.rel_y * worldHRef.current
       const dist = Math.sqrt((worldX - tx) ** 2 + (worldY - ty) ** 2)
@@ -547,6 +625,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         npcId = npc.id
         maxHp = npc.max_hp
         currentHp = parseMaxHP(npc.max_hp).numeric
+        data = { ...data, size: npc.size ?? 1 }
       } catch { }
     }
 
@@ -560,6 +639,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       disposition: data.disposition ?? 'neutral',
       max_hp: maxHp,
       current_hp: currentHp,
+      size: (data.size as number | undefined) ?? 1,
     })
   }
 

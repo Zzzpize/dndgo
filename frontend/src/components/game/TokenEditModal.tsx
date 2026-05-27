@@ -15,11 +15,14 @@ const DISP_OPTIONS: { value: MapToken['disposition']; label: string }[] = [
   { value: 'friendly', label: 'Союзник' },
 ]
 
+const SIZE_OPTIONS = [1, 2, 3, 4, 5]
+
 export function TokenEditModal({ token, sendMessage, onClose }: Props) {
   const [name, setName] = useState(token.name)
   const [disposition, setDisposition] = useState(token.disposition)
   const [maxHp, setMaxHp] = useState(token.max_hp ?? '')
   const [currentHp, setCurrentHp] = useState<number | ''>(token.current_hp ?? '')
+  const [size, setSize] = useState(token.size ?? 1)
 
   const save = () => {
     sendMessage('TOKEN_EDIT', {
@@ -28,6 +31,7 @@ export function TokenEditModal({ token, sendMessage, onClose }: Props) {
       disposition,
       max_hp: maxHp.trim() || null,
       current_hp: currentHp === '' ? null : currentHp,
+      size,
     })
     onClose()
   }
@@ -76,6 +80,25 @@ export function TokenEditModal({ token, sendMessage, onClose }: Props) {
                   }`}
                 >
                   {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-parchment/50 text-xs">Размер (клетки)</label>
+            <div className="flex gap-1.5">
+              {SIZE_OPTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSize(s)}
+                  className={`flex-1 py-1.5 rounded border text-xs font-mono transition-colors ${
+                    size === s
+                      ? 'bg-gold/20 border-gold/40 text-gold-light'
+                      : 'bg-dark border-dark-border text-parchment/40 hover:text-parchment/70'
+                  }`}
+                >
+                  {s}×{s}
                 </button>
               ))}
             </div>

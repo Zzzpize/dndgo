@@ -15,6 +15,7 @@ export interface MapToken {
   current_hp?: number
   max_hp?: string
   temp_hp: number
+  size: number
 }
 
 export interface NpcFolder {
@@ -44,6 +45,7 @@ export interface NPC {
   lair_actions?: string[]
   regional_effects?: string[]
   mythic_actions?: string[]
+  size?: number
   created_at: string
 }
 
@@ -73,6 +75,7 @@ export interface GameStateData {
   fog_paths: FogPath[]
   fog_cleared: boolean
   initiative_order: InitiativeEntry[]
+  current_init_index?: number
   player_can_move_token?: boolean
   player_can_reveal_fog?: boolean
   player_can_edit_token?: boolean
@@ -180,7 +183,7 @@ interface GameStore {
   setFogState: (fogCleared: boolean, paths: FogPath[]) => void
   addFogPaths: (paths: FogPath[]) => void
   setInitiativeOrder: (order: InitiativeEntry[]) => void
-  nextInitiative: () => void
+  nextInitiative: (index: number) => void
   endInitiative: () => void
   addDiceLog: (entry: Omit<DiceLogEntry, 'id' | 'timestamp'>) => void
   clearDiceLogs: () => void
@@ -247,7 +250,7 @@ export const useGameStore = create<GameStore>((set) => ({
       fog_cleared: gs.fog_cleared ?? true,
       initiative_order: Array.isArray(gs.initiative_order) ? gs.initiative_order : [],
     }
-    set({ gameState: parsed, tokens, activeInitIndex: 0 })
+    set({ gameState: parsed, tokens, activeInitIndex: gs.current_init_index ?? 0 })
   },
 
   addToken: (t) => set((s) => ({
@@ -289,11 +292,7 @@ export const useGameStore = create<GameStore>((set) => ({
       activeInitIndex: 0,
     })),
 
-  nextInitiative: () =>
-    set((s) => {
-      const len = s.gameState?.initiative_order.length ?? 0
-      return { activeInitIndex: len > 0 ? (s.activeInitIndex + 1) % len : 0 }
-    }),
+  nextInitiative: (index) => set({ activeInitIndex: index }),
 
   endInitiative: () =>
     set((s) => ({

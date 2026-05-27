@@ -134,7 +134,7 @@ function dispatch(msg: WsMsg) {
       s.setInitiativeOrder(msg.payload as Parameters<typeof s.setInitiativeOrder>[0])
       break
     case 'INIT_NEXT':
-      s.nextInitiative()
+      s.nextInitiative((msg.payload as { index?: number }).index ?? 0)
       break
     case 'INIT_END':
       s.endInitiative()

@@ -26,6 +26,7 @@ interface NpcForm {
   max_hp: string
   speed: string
   type_alignment: string
+  size: number
   abilities: AbilityScores
 
   features: string
@@ -55,6 +56,7 @@ const defaultForm = (): NpcForm => ({
   max_hp: '10',
   speed: '30 фт.',
   type_alignment: '',
+  size: 1,
   abilities: defaultAbilities(),
   features: '',
   saving_throws: '',
@@ -84,6 +86,7 @@ const fromNPC = (n: NPC): NpcForm => {
     max_hp: n.max_hp,
     speed: n.speed,
     type_alignment: n.type_alignment,
+    size: n.size ?? 1,
     abilities: {
       str: String(n.abilities?.str ?? 10),
       dex: String(n.abilities?.dex ?? 10),
@@ -219,6 +222,7 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
         max_hp: form.max_hp.trim(),
         current_hp: clampedHp,
         temp_hp: token.temp_hp,
+        size: form.size,
       })
       onSaved(npc)
       return
@@ -260,6 +264,7 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
         max_hp: form.max_hp.trim(),
         speed: form.speed,
         type_alignment: form.type_alignment,
+        size: form.size,
         abilities: {
           str: parseInt(form.abilities.str),
           dex: parseInt(form.abilities.dex),
@@ -406,6 +411,26 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
             <div className="flex flex-col gap-1">
               <label className="text-xs text-parchment/50 font-fantasy">Скорость</label>
               <input className={inputCls} value={form.speed} onChange={(e) => setField('speed', e.target.value)} placeholder="30 фт." />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-parchment/50 font-fantasy">Размер (клетки)</label>
+            <div className="flex gap-1.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setField('size', s)}
+                  className={`flex-1 py-1.5 rounded border text-xs font-mono transition-colors ${
+                    form.size === s
+                      ? 'bg-gold/20 border-gold/40 text-gold-light'
+                      : 'bg-dark border-dark-border text-parchment/40 hover:text-parchment/70'
+                  }`}
+                >
+                  {s}×{s}
+                </button>
+              ))}
             </div>
           </div>
 

@@ -78,6 +78,7 @@ type npcRequest struct {
 	LairActions      json.RawMessage `json:"lair_actions"`
 	RegionalEffects  json.RawMessage `json:"regional_effects"`
 	MythicActions    json.RawMessage `json:"mythic_actions"`
+	Size             int             `json:"size"`
 }
 
 type npcResponse struct {
@@ -100,6 +101,7 @@ type npcResponse struct {
 	LairActions      json.RawMessage `json:"lair_actions"`
 	RegionalEffects  json.RawMessage `json:"regional_effects"`
 	MythicActions    json.RawMessage `json:"mythic_actions"`
+	Size             int             `json:"size"`
 	CreatedAt        time.Time       `json:"created_at"`
 }
 
@@ -134,6 +136,7 @@ func toResponse(n store.NPC) npcResponse {
 		LairActions:      n.LairActions,
 		RegionalEffects:  n.RegionalEffects,
 		MythicActions:    n.MythicActions,
+		Size:             n.Size,
 		CreatedAt:        n.CreatedAt,
 	}
 }
@@ -215,6 +218,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		Reactions: req.Reactions, BonusActions: req.BonusActions,
 		LegendaryActions: req.LegendaryActions, LairActions: req.LairActions,
 		RegionalEffects: req.RegionalEffects, MythicActions: req.MythicActions,
+		Size: req.Size,
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
@@ -313,6 +317,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		Reactions: req.Reactions, BonusActions: req.BonusActions,
 		LegendaryActions: req.LegendaryActions, LairActions: req.LairActions,
 		RegionalEffects: req.RegionalEffects, MythicActions: req.MythicActions,
+		Size: req.Size,
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")

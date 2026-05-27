@@ -18,19 +18,51 @@ import { DiceRoller } from '@/components/dice/DiceRoller'
 import api from '@/lib/api'
 
 type Tool = 'pointer' | 'fog' | 'fog_hide' | 'ruler'
-const TOOLS: { key: Tool; icon: string; title: string }[] = [
+const DM_TOOLS: { key: Tool; icon: string; title: string }[] = [
   { key: 'pointer',  icon: '✥',  title: 'Указатель' },
   { key: 'ruler',    icon: '📏', title: 'Линейка' },
   { key: 'fog',      icon: '☁',  title: 'Убрать туман' },
   { key: 'fog_hide', icon: '🌑', title: 'Добавить туман' },
 ]
+const PLAYER_TOOLS: { key: Tool; icon: string; title: string }[] = [
+  { key: 'pointer', icon: '✥',  title: 'Указатель' },
+  { key: 'ruler',   icon: '📏', title: 'Линейка' },
+]
 
-function ToolBar() {
+function InitiativeOverlay() {
+  const order = useGameStore((s) => s.gameState?.initiative_order ?? [])
+  const activeInitIndex = useGameStore((s) => s.activeInitIndex)
+  if (order.length === 0) return null
+  return (
+    <div className="absolute top-3 right-3 z-20 flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
+      {order.map((e, i) => {
+        const isActive = i === activeInitIndex % Math.max(order.length, 1)
+        return (
+          <div
+            key={e.token_id}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs ${
+              isActive
+                ? 'bg-gold/20 border-gold/40 text-gold-light'
+                : 'bg-dark-card/80 border-dark-border/50 text-parchment/60'
+            }`}
+          >
+            <span className="shrink-0">{isActive ? '▶' : '·'}</span>
+            <span className="truncate max-w-[100px]">{e.name}</span>
+            <span className="font-mono ml-auto pl-2 text-parchment/40 shrink-0">{e.initiative}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ToolBar({ role }: { role: 'dm' | 'player' | null }) {
   const activeTool = useGameStore((s) => s.activeTool)
   const setActiveTool = useGameStore((s) => s.setActiveTool)
+  const tools = role === 'dm' ? DM_TOOLS : PLAYER_TOOLS
   return (
     <div className="absolute top-3 left-3 flex flex-col gap-1 z-20">
-      {TOOLS.map(({ key, icon, title }) => (
+      {tools.map(({ key, icon, title }) => (
         <button
           key={key}
           title={title}
@@ -242,9 +274,12 @@ export default function RoomPage() {
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 relative overflow-hidden">
             <GameCanvas sendMessage={sendMessage} roomCode={code} />
-            {role === 'dm' && <ToolBar />}
+            <ToolBar role={role} />
+            {(role === 'player' || (role === 'dm' && !showDMPanel)) && <InitiativeOverlay />}
+            <div className="absolute bottom-0 left-0 right-0 z-10">
+              <DiceRoller sendMessage={sendMessage} />
+            </div>
           </div>
-          <DiceRoller sendMessage={sendMessage} />
         </div>
 
         {role === 'dm' && showDMPanel && (

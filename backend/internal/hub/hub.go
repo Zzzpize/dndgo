@@ -312,6 +312,55 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		h.broadcastToRoom(c.room, EvTokenDelete, payload)
 		h.publish(ctx, c.userID, roomID, EvTokenDelete, payload)
 
+		// Remove deleted token from initiative order if present
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			return
+		}
+		var order []json.RawMessage
+		if err := json.Unmarshal(gs.InitiativeOrder, &order); err != nil || len(order) == 0 {
+			return
+		}
+		tokenIDStr := p.ID.String()
+		deletedIdx := -1
+		for i, entry := range order {
+			var e struct {
+				TokenID string `json:"token_id"`
+			}
+			if json.Unmarshal(entry, &e) == nil && e.TokenID == tokenIDStr {
+				deletedIdx = i
+				break
+			}
+		}
+		if deletedIdx < 0 {
+			return
+		}
+		newOrder := append(append([]json.RawMessage{}, order[:deletedIdx]...), order[deletedIdx+1:]...)
+		if len(newOrder) == 0 {
+			gs.InitiativeOrder = json.RawMessage("[]")
+			gs.CurrentInitIndex = 0
+			if upsertErr := h.store.UpsertGameState(ctx, gs); upsertErr != nil {
+				log.Printf("hub: token delete initiative clear: %v", upsertErr)
+			}
+			h.broadcastToRoom(c.room, EvInitEnd, []struct{}{})
+			return
+		}
+		newIdx := gs.CurrentInitIndex
+		if deletedIdx < gs.CurrentInitIndex {
+			newIdx = gs.CurrentInitIndex - 1
+		} else if deletedIdx == gs.CurrentInitIndex {
+			newIdx = gs.CurrentInitIndex % len(newOrder)
+		}
+		newOrderData, _ := json.Marshal(newOrder)
+		gs.InitiativeOrder = json.RawMessage(newOrderData)
+		gs.CurrentInitIndex = newIdx
+		if upsertErr := h.store.UpsertGameState(ctx, gs); upsertErr != nil {
+			log.Printf("hub: token delete initiative update: %v", upsertErr)
+			return
+		}
+		h.broadcastToRoom(c.room, EvInitUpdate, newOrder)
+		h.broadcastToRoom(c.room, EvInitNext, map[string]any{"index": newIdx})
+
 	case EvGridUpdate:
 		if c.role != "dm" {
 			return
@@ -428,19 +477,41 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		if err != nil {
 			return
 		}
+		var newOrder []json.RawMessage
+		_ = json.Unmarshal(msg.Payload, &newOrder)
 		gs.InitiativeOrder = msg.Payload
+		adjustedIdx := gs.CurrentInitIndex
+		if len(newOrder) == 0 || adjustedIdx >= len(newOrder) {
+			adjustedIdx = 0
+		}
+		gs.CurrentInitIndex = adjustedIdx
 		if err := h.store.UpsertGameState(ctx, gs); err != nil {
 			log.Printf("hub: initiative update: %v", err)
 			return
 		}
 		h.broadcastToRoom(c.room, EvInitUpdate, msg.Payload)
+		h.broadcastToRoom(c.room, EvInitNext, map[string]any{"index": adjustedIdx})
 		h.publish(ctx, c.userID, roomID, EvInitUpdate, msg.Payload)
 
 	case EvInitNext:
 		if c.role != "dm" {
 			return
 		}
-		h.broadcastToRoom(c.room, EvInitNext, msg.Payload)
+		gs, err := h.store.GetGameState(ctx, roomID)
+		if err != nil {
+			return
+		}
+		var order []json.RawMessage
+		if err := json.Unmarshal(gs.InitiativeOrder, &order); err != nil || len(order) == 0 {
+			return
+		}
+		newIdx := (gs.CurrentInitIndex + 1) % len(order)
+		gs.CurrentInitIndex = newIdx
+		if err := h.store.UpsertGameState(ctx, gs); err != nil {
+			log.Printf("hub: init next: %v", err)
+			return
+		}
+		h.broadcastToRoom(c.room, EvInitNext, map[string]any{"index": newIdx})
 
 	case EvInitEnd:
 		if c.role != "dm" {
@@ -451,6 +522,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			return
 		}
 		gs.InitiativeOrder = json.RawMessage("[]")
+		gs.CurrentInitIndex = 0
 		if err := h.store.UpsertGameState(ctx, gs); err != nil {
 			log.Printf("hub: init end: %v", err)
 			return
@@ -487,11 +559,12 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			MaxHP       *string   `json:"max_hp"`
 			CurrentHP   *int      `json:"current_hp"`
 			TempHP      int       `json:"temp_hp"`
+			Size        int       `json:"size"`
 		}
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
 			return
 		}
-		token, err := h.store.UpdateToken(ctx, p.ID, p.Name, p.Disposition, p.MaxHP, p.CurrentHP, p.TempHP)
+		token, err := h.store.UpdateToken(ctx, p.ID, p.Name, p.Disposition, p.MaxHP, p.CurrentHP, p.TempHP, p.Size)
 		if err != nil {
 			log.Printf("hub: edit token: %v", err)
 			return
@@ -561,6 +634,7 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		gs.FogPaths = json.RawMessage("[]")
 		gs.FogCleared = true
 		gs.InitiativeOrder = json.RawMessage("[]")
+		gs.CurrentInitIndex = 0
 		if err := h.store.UpsertGameState(ctx, gs); err != nil {
 			log.Printf("hub: session clear: upsert: %v", err)
 			return

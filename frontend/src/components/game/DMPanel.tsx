@@ -33,6 +33,7 @@ interface PoolEntry {
   disposition: 'friendly' | 'neutral' | 'hostile'
   max_hp?: string
   current_hp?: number
+  size?: number
   subtitle?: string
 }
 
@@ -189,6 +190,7 @@ function QueueTab({
                 disposition: entry.disposition,
                 max_hp: entry.max_hp,
                 current_hp: entry.current_hp,
+                size: entry.size,
               }))
             }}
             className="flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border cursor-grab active:cursor-grabbing"
@@ -392,6 +394,7 @@ function NpcCard({
           disposition: npc.disposition,
           max_hp: npc.max_hp,
           current_hp: parseMaxHP(npc.max_hp).numeric,
+          size: npc.size ?? 1,
         }))
       }}
       className="relative flex items-center gap-2 px-2 py-2 rounded bg-dark border border-dark-border/50 hover:border-dark-border group cursor-grab active:cursor-grabbing"
@@ -511,6 +514,7 @@ function NpcTab({
   const addToPool = (n: NPC) => onAddToPool({
     token_type: 'npc', npc_id: n.id, name: n.name,
     disposition: n.disposition, max_hp: n.max_hp, current_hp: parseMaxHP(n.max_hp).numeric,
+    size: n.size ?? 1,
     subtitle: `КД ${n.ac} · ${n.max_hp} хп`,
   })
 

@@ -24,6 +24,7 @@ type GameState struct {
 	FogPaths            json.RawMessage `json:"fog_paths"`
 	FogCleared          bool            `json:"fog_cleared"`
 	InitiativeOrder     json.RawMessage `json:"initiative_order"`
+	CurrentInitIndex    int             `json:"current_init_index"`
 	PlayerCanMoveToken  bool            `json:"player_can_move_token"`
 	PlayerCanRevealFog  bool            `json:"player_can_reveal_fog"`
 	PlayerCanEditToken  bool            `json:"player_can_edit_token"`
@@ -56,6 +57,7 @@ type MapToken struct {
 	CurrentHP   *int       `json:"current_hp,omitempty"`
 	MaxHP       *string    `json:"max_hp,omitempty"`
 	TempHP      int        `json:"temp_hp"`
+	Size        int        `json:"size"`
 }
 
 type TokenInput struct {
@@ -69,18 +71,21 @@ type TokenInput struct {
 	CurrentHP   *int       `json:"current_hp,omitempty"`
 	MaxHP       *string    `json:"max_hp,omitempty"`
 	TempHP      int        `json:"temp_hp"`
+	Size        int        `json:"size"`
 }
 
 func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, error) {
 	var gs GameState
 	err := s.pool.QueryRow(ctx, `
 		SELECT room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order,
+		       current_init_index,
 		       player_can_move_token, player_can_reveal_fog, player_can_edit_token,
 		       player_can_edit_hp, player_can_edit_sheet, players_see_dm_rolls, player_can_roll_dice
 		FROM game_state WHERE room_id = $1`, roomID,
 	).Scan(
 		&gs.RoomID, &gs.MapImageURL, &gs.MapAspect, &gs.GridEnabled, &gs.GridSize,
 		&gs.FogPaths, &gs.FogCleared, &gs.InitiativeOrder,
+		&gs.CurrentInitIndex,
 		&gs.PlayerCanMoveToken, &gs.PlayerCanRevealFog, &gs.PlayerCanEditToken,
 		&gs.PlayerCanEditHP, &gs.PlayerCanEditSheet, &gs.PlayersSeesDMRolls, &gs.PlayerCanRollDice,
 	)
@@ -93,6 +98,7 @@ func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, 
 			FogPaths:           json.RawMessage("[]"),
 			FogCleared:         true,
 			InitiativeOrder:    json.RawMessage("[]"),
+			CurrentInitIndex:   0,
 			PlayerCanMoveToken: true,
 			PlayerCanRevealFog: true,
 			PlayerCanEditToken: true,
@@ -131,19 +137,20 @@ func (s *Store) UpdateRoomSettings(ctx context.Context, roomID uuid.UUID, settin
 
 func (s *Store) UpsertGameState(ctx context.Context, gs GameState) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO game_state (room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, NOW())
+		INSERT INTO game_state (room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order, current_init_index, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, $9, NOW())
 		ON CONFLICT (room_id) DO UPDATE SET
-			map_image_url    = EXCLUDED.map_image_url,
-			map_aspect       = EXCLUDED.map_aspect,
-			grid_enabled     = EXCLUDED.grid_enabled,
-			grid_size        = EXCLUDED.grid_size,
-			fog_cells        = EXCLUDED.fog_cells,
-			fog_cleared      = EXCLUDED.fog_cleared,
-			initiative_order = EXCLUDED.initiative_order,
-			updated_at       = NOW()`,
+			map_image_url      = EXCLUDED.map_image_url,
+			map_aspect         = EXCLUDED.map_aspect,
+			grid_enabled       = EXCLUDED.grid_enabled,
+			grid_size          = EXCLUDED.grid_size,
+			fog_cells          = EXCLUDED.fog_cells,
+			fog_cleared        = EXCLUDED.fog_cleared,
+			initiative_order   = EXCLUDED.initiative_order,
+			current_init_index = EXCLUDED.current_init_index,
+			updated_at         = NOW()`,
 		gs.RoomID, gs.MapImageURL, gs.MapAspect, gs.GridEnabled, gs.GridSize,
-		string(gs.FogPaths), gs.FogCleared, string(gs.InitiativeOrder),
+		string(gs.FogPaths), gs.FogCleared, string(gs.InitiativeOrder), gs.CurrentInitIndex,
 	)
 	return err
 }
@@ -163,12 +170,12 @@ func (s *Store) UpdateMapImageURL(ctx context.Context, roomID uuid.UUID, url str
 	return err
 }
 
-const tokenCols = `id, room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp, temp_hp`
+const tokenCols = `id, room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp, temp_hp, size`
 
 func scanToken(row interface{ Scan(...any) error }) (MapToken, error) {
 	var t MapToken
 	err := row.Scan(&t.ID, &t.RoomID, &t.TokenType, &t.CharacterID, &t.NpcID,
-		&t.Name, &t.RelX, &t.RelY, &t.Disposition, &t.CurrentHP, &t.MaxHP, &t.TempHP)
+		&t.Name, &t.RelX, &t.RelY, &t.Disposition, &t.CurrentHP, &t.MaxHP, &t.TempHP, &t.Size)
 	return t, err
 }
 
@@ -196,12 +203,16 @@ func (s *Store) GetTokensByRoom(ctx context.Context, roomID uuid.UUID) ([]MapTok
 }
 
 func (s *Store) CreateToken(ctx context.Context, roomID uuid.UUID, in TokenInput) (MapToken, error) {
+	size := in.Size
+	if size < 1 {
+		size = 1
+	}
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO map_tokens (room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp, temp_hp)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO map_tokens (room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp, temp_hp, size)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING `+tokenCols,
 		roomID, in.TokenType, in.CharacterID, in.NpcID, in.Name,
-		in.RelX, in.RelY, in.Disposition, in.CurrentHP, in.MaxHP, in.TempHP,
+		in.RelX, in.RelY, in.Disposition, in.CurrentHP, in.MaxHP, in.TempHP, size,
 	)
 	return scanToken(row)
 }
@@ -226,12 +237,15 @@ func (s *Store) UpdateTokenHP(ctx context.Context, tokenID uuid.UUID, currentHP 
 	return scanToken(row)
 }
 
-func (s *Store) UpdateToken(ctx context.Context, tokenID uuid.UUID, name, disposition string, maxHP *string, currentHP *int, tempHP int) (MapToken, error) {
+func (s *Store) UpdateToken(ctx context.Context, tokenID uuid.UUID, name, disposition string, maxHP *string, currentHP *int, tempHP, size int) (MapToken, error) {
+	if size < 1 {
+		size = 1
+	}
 	row := s.pool.QueryRow(ctx, `
-		UPDATE map_tokens SET name = $2, disposition = $3, max_hp = $4, current_hp = $5, temp_hp = $6
+		UPDATE map_tokens SET name = $2, disposition = $3, max_hp = $4, current_hp = $5, temp_hp = $6, size = $7
 		WHERE id = $1
 		RETURNING `+tokenCols,
-		tokenID, name, disposition, maxHP, currentHP, tempHP,
+		tokenID, name, disposition, maxHP, currentHP, tempHP, size,
 	)
 	return scanToken(row)
 }
