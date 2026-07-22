@@ -145,6 +145,7 @@ export function DiceRoller({ sendMessage }: Props) {
                     <span className="text-parchment/60">{log.notation}</span>
                     <span className="text-parchment/30">=</span>
                     <span className="text-gold-light font-bold">{log.total}</span>
+                    {log.karmic_applied && <span className="text-amber-400" title="Кармические кубики">★</span>}
                     {(log.rolls?.length ?? 0) > 1 && (
                       <span className="text-parchment/25">[{(log.rolls ?? []).join(',')}]</span>
                     )}
@@ -179,6 +180,7 @@ export function DiceRoller({ sendMessage }: Props) {
                         <span className="text-parchment/70 shrink-0">{log.notation}</span>
                         <span className="text-parchment/30">=</span>
                         <span className="text-gold-light font-bold shrink-0">{log.total}</span>
+                        {log.karmic_applied && <span className="text-amber-400 shrink-0" title="Кармические кубики">★</span>}
                         {(log.rolls?.length ?? 0) > 1 && (
                           <span className="text-parchment/30 ml-auto">[{(log.rolls ?? []).join(', ')}]</span>
                         )}

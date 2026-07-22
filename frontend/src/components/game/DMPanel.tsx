@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useGameStore, InitiativeEntry, Character, NPC } from '@/store/gameStore'
+import { useGameStore, InitiativeEntry, Character, NPC, KarmicSettings } from '@/store/gameStore'
 import { parseMaxHP } from '@/lib/maxhp'
 import { CharacterModal } from '@/components/character/CharacterModal'
 import { NpcModal } from '@/components/game/NpcModal'
@@ -12,7 +12,7 @@ interface Props {
   roomCode: string
 }
 
-type Tab = 'queue' | 'tokens' | 'npc' | 'initiative' | 'map' | 'chars'
+type Tab = 'queue' | 'tokens' | 'npc' | 'initiative' | 'map' | 'chars' | 'settings'
 
 interface Monster {
   id: number
@@ -62,6 +62,7 @@ export function DMPanel({ sendMessage, roomCode }: Props) {
     { key: 'initiative', label: 'Бой' },
     { key: 'map', label: 'Карта' },
     { key: 'chars', label: 'Персонажи' },
+    { key: 'settings', label: '⚙' },
   ]
 
   return (
@@ -89,6 +90,7 @@ export function DMPanel({ sendMessage, roomCode }: Props) {
         {tab === 'initiative' && <InitiativeTab sendMessage={sendMessage} />}
         {tab === 'map' && <MapTab sendMessage={sendMessage} roomCode={roomCode} />}
         {tab === 'chars' && <CharsTab roomCode={roomCode} onAddToPool={addToPool} sendMessage={sendMessage} />}
+        {tab === 'settings' && <SettingsTab sendMessage={sendMessage} />}
       </div>
     </div>
   )
@@ -1322,6 +1324,72 @@ function MapTab({ sendMessage, roomCode }: { sendMessage: Props['sendMessage']; 
         >
           Очистить сессию
         </button>
+      </div>
+    </div>
+  )
+}
+
+function SettingsTab({ sendMessage }: { sendMessage: Props['sendMessage'] }) {
+  const karmicSettings = useGameStore((s) => s.karmicSettings)
+  const [karmic, setKarmic] = useState(karmicSettings.karmic_enabled)
+  const [dmOnly, setDmOnly] = useState(karmicSettings.karmic_dm_only)
+
+  useEffect(() => {
+    setKarmic(karmicSettings.karmic_enabled)
+    setDmOnly(karmicSettings.karmic_dm_only)
+  }, [karmicSettings])
+
+  const apply = (next: KarmicSettings) => {
+    sendMessage('KARMIC_UPDATE', next)
+  }
+
+  const toggleKarmic = (v: boolean) => {
+    setKarmic(v)
+    apply({ karmic_enabled: v, karmic_dm_only: dmOnly })
+  }
+
+  const toggleDmOnly = (v: boolean) => {
+    setDmOnly(v)
+    apply({ karmic_enabled: karmic, karmic_dm_only: v })
+  }
+
+  return (
+    <div className="p-3 flex flex-col gap-4">
+      <p className="text-xs font-fantasy text-parchment/50">Настройки комнаты</p>
+
+      <div className="bg-dark border border-dark-border rounded p-3 flex flex-col gap-3">
+        <div className="flex items-start gap-2">
+          <input
+            id="karmic-toggle"
+            type="checkbox"
+            checked={karmic}
+            onChange={(e) => toggleKarmic(e.target.checked)}
+            className="accent-gold mt-0.5 w-3.5 h-3.5 shrink-0"
+          />
+          <div>
+            <label htmlFor="karmic-toggle" className="text-xs text-parchment cursor-pointer font-fantasy">
+              Кармические кубики
+            </label>
+            <p className="text-parchment/40 text-xs mt-0.5">
+              После 3 провалов подряд следующий бросок идёт с преимуществом
+            </p>
+          </div>
+        </div>
+
+        {karmic && (
+          <div className="flex items-center gap-2 pl-5">
+            <input
+              id="dm-only-toggle"
+              type="checkbox"
+              checked={dmOnly}
+              onChange={(e) => toggleDmOnly(e.target.checked)}
+              className="accent-gold w-3.5 h-3.5 shrink-0"
+            />
+            <label htmlFor="dm-only-toggle" className="text-xs text-parchment/70 cursor-pointer">
+              Только для мастера
+            </label>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -47,6 +47,7 @@ const (
 	EvSessionClear   = "SESSION_CLEAR"
 	EvDmPresence     = "DM_PRESENCE"
 	EvSettingsUpdate = "SETTINGS_UPDATE"
+	EvKarmicUpdate   = "KARMIC_UPDATE"
 )
 
 type Message struct {
@@ -64,12 +65,16 @@ type Client struct {
 }
 
 type Room struct {
-	code       string
-	clients    map[*Client]struct{}
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
+	code          string
+	clients       map[*Client]struct{}
+	broadcast     chan []byte
+	register      chan *Client
+	unregister    chan *Client
+	mu            sync.RWMutex
+	karmaMu       sync.Mutex
+	karmicEnabled bool
+	karmicDMOnly  bool
+	playerKarma   map[uuid.UUID]int
 }
 
 type Hub struct {
@@ -101,11 +106,12 @@ func (h *Hub) getOrCreateRoom(code string) *Room {
 	r, ok := h.rooms[code]
 	if !ok {
 		r = &Room{
-			code:       code,
-			clients:    make(map[*Client]struct{}),
-			broadcast:  make(chan []byte, 256),
-			register:   make(chan *Client),
-			unregister: make(chan *Client),
+			code:        code,
+			clients:     make(map[*Client]struct{}),
+			broadcast:   make(chan []byte, 256),
+			register:    make(chan *Client),
+			unregister:  make(chan *Client),
+			playerKarma: make(map[uuid.UUID]int),
 		}
 		h.rooms[code] = r
 		go r.run()
@@ -617,6 +623,23 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		}
 		h.broadcastToRoom(c.room, EvSettingsUpdate, settings)
 
+	case EvKarmicUpdate:
+		if c.role != "dm" {
+			return
+		}
+		var p struct {
+			KarmicEnabled bool `json:"karmic_enabled"`
+			KarmicDMOnly  bool `json:"karmic_dm_only"`
+		}
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			return
+		}
+		c.room.karmaMu.Lock()
+		c.room.karmicEnabled = p.KarmicEnabled
+		c.room.karmicDMOnly = p.KarmicDMOnly
+		c.room.karmaMu.Unlock()
+		h.broadcastToRoom(c.room, EvKarmicUpdate, p)
+
 	case EvSessionClear:
 		if c.role != "dm" {
 			return
@@ -652,14 +675,41 @@ func (h *Hub) handleDiceRoll(ctx context.Context, c *Client, roomID uuid.UUID, p
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return
 	}
+
 	total, rolls := rollDice(p.Notation)
+	karmicApplied := false
+
+	c.room.karmaMu.Lock()
+	if c.room.karmicEnabled {
+		isDM := c.role == "dm"
+		if !c.room.karmicDMOnly || isDM {
+			failures := c.room.playerKarma[c.userID]
+			if failures >= 3 {
+				total2, rolls2 := rollDice(p.Notation)
+				if total2 > total {
+					total, rolls = total2, rolls2
+				}
+				karmicApplied = true
+				c.room.playerKarma[c.userID] = 0
+			} else if avg, ok := avgForNotation(p.Notation); ok {
+				if total < avg {
+					c.room.playerKarma[c.userID]++
+				} else {
+					c.room.playerKarma[c.userID] = 0
+				}
+			}
+		}
+	}
+	c.room.karmaMu.Unlock()
+
 	result := map[string]any{
-		"user_id":  c.userID.String(),
-		"username": c.username,
-		"role":     c.role,
-		"notation": p.Notation,
-		"rolls":    rolls,
-		"total":    total,
+		"user_id":        c.userID.String(),
+		"username":       c.username,
+		"role":           c.role,
+		"notation":       p.Notation,
+		"rolls":          rolls,
+		"total":          total,
+		"karmic_applied": karmicApplied,
 	}
 	h.broadcastToRoom(c.room, EvDiceRollResult, result)
 	h.publish(ctx, c.userID, roomID, EvDiceRollResult, result)
@@ -816,4 +866,46 @@ func atoi(s string) int {
 		}
 	}
 	return n
+}
+
+func avgForNotation(notation string) (int, bool) {
+	dIdx := -1
+	for i, ch := range notation {
+		if ch == 'd' || ch == 'D' {
+			dIdx = i
+			break
+		}
+	}
+	if dIdx < 0 {
+		return 0, false
+	}
+	plusIdx, minusIdx := -1, -1
+	for i, ch := range notation {
+		if ch == '+' && i > 0 {
+			plusIdx = i
+		} else if ch == '-' && i > dIdx {
+			minusIdx = i
+		}
+	}
+	nStr := notation[:dIdx]
+	n := 1
+	if nStr != "" {
+		n = atoi(nStr)
+	}
+	var mStr string
+	bonus := 0
+	if plusIdx > 0 {
+		mStr = notation[dIdx+1 : plusIdx]
+		bonus = atoi(notation[plusIdx+1:])
+	} else if minusIdx > dIdx {
+		mStr = notation[dIdx+1 : minusIdx]
+		bonus = -atoi(notation[minusIdx+1:])
+	} else {
+		mStr = notation[dIdx+1:]
+	}
+	m := atoi(mStr)
+	if n <= 0 || m <= 0 {
+		return 0, false
+	}
+	return n*(m+1)/2 + bonus, true
 }
