@@ -368,7 +368,13 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const layer = layersRef.current?.fog
     if (!layer) return
 
+    // Opacity lives on the layer so it composes AFTER the black rect +
+    // destination-out reveals are combined. Applying opacity on the group
+    // would break destination-out (alpha < 1 fails to fully punch through)
+    // and cause hide circles to double up in the uncached window.
     const fogOpacity = role === 'dm' ? 0.45 : 1
+    layer.opacity(fogOpacity)
+
     const worldH = worldHRef.current
     const cleared = gameState?.fog_cleared ?? true
     const paths = gameState?.fog_paths ?? []
@@ -391,7 +397,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         return
       }
 
-      const g = new Konva.Group({ opacity: fogOpacity })
+      const g = new Konva.Group()
       g.add(new Konva.Rect({ x: 0, y: 0, width: WORLD_W, height: worldH, fill: 'black' }))
       layer.add(g)
       fogGroupRef.current = g
@@ -400,7 +406,6 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     // Fast path: append only new circles to the existing group.
     if (!cleared && fogGroupRef.current) {
       const g = fogGroupRef.current
-      g.opacity(fogOpacity)
       const start = fogRenderedCountRef.current
       if (paths.length > start) {
         // If cached, clear it before mutating children — cache is a snapshot.
