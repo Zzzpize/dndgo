@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ReactNode } from 'react'
 import api from '@/lib/api'
 import { parseMaxHP } from '@/lib/maxhp'
@@ -145,6 +145,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 const STAT_KEYS = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const
 
 export function CharacterModal({ roomCode, character, sendMessage, role, onClose, onSaved }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const addCharacter = useGameStore((s) => s.addCharacter)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
   const gameState = useGameStore((s) => s.gameState)
@@ -314,14 +320,8 @@ export function CharacterModal({ roomCode, character, sendMessage, role, onClose
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-dark-card border border-dark-border rounded-lg w-full max-w-lg flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-dark-card border border-dark-border rounded-lg w-full max-w-lg flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border shrink-0">
           <h2 className="font-fantasy text-gold-light text-base">
             {character ? 'Редактировать персонажа' : 'Новый персонаж'}

@@ -16,6 +16,12 @@ interface Props {
 }
 
 export function TemplatePicker({ roomCode, sendMessage, onClose, onImported }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const addCharacter = useGameStore((s) => s.addCharacter)
   const updateCharacter = useGameStore((s) => s.updateCharacter)
   const allCharacters = useGameStore((s) => s.characters)
@@ -80,11 +86,8 @@ export function TemplatePicker({ roomCode, sendMessage, onClose, onImported }: P
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div
-        className="bg-dark-card border border-dark-border rounded-lg w-full max-w-sm flex flex-col max-h-[80vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-dark-card border border-dark-border rounded-lg w-full max-w-sm flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border shrink-0">
           <h2 className="font-fantasy text-gold-light text-base">Добавить персонажа</h2>
           <button onClick={onClose} className="text-parchment/40 hover:text-parchment/70 w-7 h-7 flex items-center justify-center">✕</button>

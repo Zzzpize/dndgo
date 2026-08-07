@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, ReactNode } from 'react'
+import { useState, useEffect, ReactNode } from 'react'
 import api from '@/lib/api'
 import { parseMaxHP } from '@/lib/maxhp'
 
@@ -119,6 +119,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function TemplateModal({ template, onClose, onSaved }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const [tab, setTab] = useState<Tab>('main')
   const [form, setForm] = useState<CharForm>(() => template ? fromTemplate(template) : defaultForm())
   const [saving, setSaving] = useState(false)
@@ -197,11 +203,8 @@ export function TemplateModal({ template, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div
-        className="bg-dark-card border border-dark-border rounded-lg w-full max-w-lg flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-dark-card border border-dark-border rounded-lg w-full max-w-lg flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border shrink-0">
           <h2 className="font-fantasy text-gold-light text-base">
             {template ? 'Редактировать шаблон' : 'Новый шаблон'}
