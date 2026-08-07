@@ -83,6 +83,10 @@ export interface GameStateData {
   player_can_edit_sheet?: boolean
   players_see_dm_rolls?: boolean
   player_can_roll_dice?: boolean
+  karmic_enabled?: boolean
+  karmic_mode?: 'protection' | 'balanced'
+  karmic_dm_only?: boolean
+  karmic_only_d20?: boolean
 }
 
 export interface DiceLogEntry {
@@ -95,11 +99,6 @@ export interface DiceLogEntry {
   total: number
   karmic_applied?: boolean
   timestamp: number
-}
-
-export interface KarmicSettings {
-  karmic_enabled: boolean
-  karmic_dm_only: boolean
 }
 
 export interface CharacterStats {
@@ -161,7 +160,6 @@ interface GameStore {
   editingTokenId: string | null
   rulerPos: { x1: number; y1: number; x2: number; y2: number } | null
   activeTool: 'pointer' | 'fog' | 'fog_hide' | 'ruler'
-  karmicSettings: KarmicSettings
 
   setRole: (r: 'dm' | 'player') => void
   setConnected: (v: boolean) => void
@@ -199,7 +197,6 @@ interface GameStore {
   setSelectedChar: (id: string | null) => void
   setEditingTokenId: (id: string | null) => void
   setRulerPos: (pos: { x1: number; y1: number; x2: number; y2: number } | null) => void
-  setKarmicSettings: (s: KarmicSettings) => void
   reset: () => void
 }
 
@@ -221,7 +218,6 @@ const initialState = {
   editingTokenId: null as string | null,
   rulerPos: null as { x1: number; y1: number; x2: number; y2: number } | null,
   activeTool: 'pointer' as 'pointer' | 'fog' | 'ruler',
-  karmicSettings: { karmic_enabled: false, karmic_dm_only: false } as KarmicSettings,
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -330,7 +326,6 @@ export const useGameStore = create<GameStore>((set) => ({
   setSelectedChar: (id) => set({ selectedCharId: id }),
   setEditingTokenId: (id) => set({ editingTokenId: id }),
   setRulerPos: (pos) => set({ rulerPos: pos }),
-  setKarmicSettings: (s) => set({ karmicSettings: s }),
 
   reset: () => set(initialState),
 }))

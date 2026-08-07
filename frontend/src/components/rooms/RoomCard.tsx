@@ -28,9 +28,25 @@ interface RoomSettings {
   player_can_edit_sheet: boolean
   players_see_dm_rolls: boolean
   player_can_roll_dice: boolean
+  karmic_enabled: boolean
+  karmic_mode: 'protection' | 'balanced'
+  karmic_dm_only: boolean
+  karmic_only_d20: boolean
 }
 
 type Panel = 'rename' | 'delete' | 'leave' | 'settings' | null
+
+type PermKey =
+  | 'player_can_move_token'
+  | 'player_can_reveal_fog'
+  | 'player_can_edit_token'
+  | 'player_can_edit_hp'
+  | 'player_can_edit_sheet'
+  | 'players_see_dm_rolls'
+  | 'player_can_roll_dice'
+  | 'karmic_enabled'
+  | 'karmic_dm_only'
+  | 'karmic_only_d20'
 
 export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCardProps) {
   const [showCode, setShowCode] = useState(false)
@@ -61,12 +77,15 @@ export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCa
     }
   }
 
-  const toggleSetting = async (key: keyof RoomSettings, value: boolean) => {
+  const patchSettings = async (patch: Partial<RoomSettings>) => {
     if (!settings) return
-    const next = { ...settings, [key]: value }
+    const next = { ...settings, ...patch }
     setSettings(next)
     await api.patch(`/api/v1/rooms/${room.code}/settings`, next)
   }
+
+  const toggleSetting = (key: keyof RoomSettings, value: boolean) =>
+    patchSettings({ [key]: value } as Partial<RoomSettings>)
 
   const handleRename = async () => {
     if (!renameInput.trim()) return
@@ -270,32 +289,96 @@ export function RoomCard({ room, onEnter, onRenamed, onDeleted, onLeft }: RoomCa
           {settingsLoading || !settings ? (
             <p className="text-xs text-parchment/30 animate-pulse">Загрузка...</p>
           ) : (
-            <div className="flex flex-col gap-2">
-              {([
-                { key: 'player_can_move_token' as const, label: 'Перемещать токен', indent: false },
-                { key: 'player_can_reveal_fog' as const, label: 'Раскрывать туман', indent: true, parentKey: 'player_can_move_token' as const },
-                { key: 'player_can_edit_token' as const, label: 'Редактировать персонажа', indent: false },
-                { key: 'player_can_edit_hp' as const, label: 'Менять HP', indent: true, parentKey: 'player_can_edit_token' as const },
-                { key: 'player_can_edit_sheet' as const, label: 'Редактировать анкету', indent: true, parentKey: 'player_can_edit_token' as const },
-                { key: 'players_see_dm_rolls' as const, label: 'Видят броски мастера', indent: false },
-                { key: 'player_can_roll_dice' as const, label: 'Бросать кубики', indent: false },
-              ] as Array<{ key: keyof RoomSettings; label: string; indent: boolean; parentKey?: keyof RoomSettings }>).map(({ key, label, indent, parentKey }) => {
-                const disabled = parentKey ? !settings[parentKey] : false
-                const value = settings[key]
-                return (
-                  <div key={key} className={`flex items-center gap-2 ${indent ? 'pl-3' : ''}`}>
-                    {indent && <span className="text-parchment/20 text-xs">└</span>}
-                    <span className={`flex-1 text-xs ${disabled ? 'text-parchment/30' : 'text-parchment/70'}`}>{label}</span>
-                    <button
-                      onClick={() => !disabled && toggleSetting(key, !value)}
-                      className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${value && !disabled ? 'bg-gold/70' : value ? 'bg-gold/40' : 'bg-dark-border'}`}
-                    >
-                      <span className="absolute top-0.5 w-3 h-3 rounded-full bg-parchment transition-all" style={{ left: value ? '18px' : '2px' }} />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
+            <>
+              <div className="flex flex-col gap-2">
+                {(
+                  [
+                    { key: 'player_can_move_token', label: 'Перемещать токен', indent: false },
+                    { key: 'player_can_reveal_fog', label: 'Раскрывать туман', indent: true, parentKey: 'player_can_move_token' },
+                    { key: 'player_can_edit_token', label: 'Редактировать персонажа', indent: false },
+                    { key: 'player_can_edit_hp', label: 'Менять HP', indent: true, parentKey: 'player_can_edit_token' },
+                    { key: 'player_can_edit_sheet', label: 'Редактировать анкету', indent: true, parentKey: 'player_can_edit_token' },
+                    { key: 'players_see_dm_rolls', label: 'Видят броски мастера', indent: false },
+                    { key: 'player_can_roll_dice', label: 'Бросать кубики', indent: false },
+                  ] as Array<{ key: PermKey; label: string; indent: boolean; parentKey?: PermKey }>
+                ).map(({ key, label, indent, parentKey }) => {
+                  const disabled = parentKey ? !settings[parentKey] : false
+                  const value = settings[key]
+                  return (
+                    <div key={key} className={`flex items-center gap-2 ${indent ? 'pl-3' : ''}`}>
+                      {indent && <span className="text-parchment/20 text-xs">└</span>}
+                      <span className={`flex-1 text-xs ${disabled ? 'text-parchment/30' : 'text-parchment/70'}`}>{label}</span>
+                      <button
+                        onClick={() => !disabled && toggleSetting(key, !value)}
+                        className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${value && !disabled ? 'bg-gold/70' : value ? 'bg-gold/40' : 'bg-dark-border'}`}
+                      >
+                        <span className="absolute top-0.5 w-3 h-3 rounded-full bg-parchment transition-all" style={{ left: value ? '18px' : '2px' }} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <hr className="border-dark-border/50" />
+              <p className="text-xs font-fantasy text-parchment/50">Кармические кубики</p>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-xs text-parchment/70">Включить</span>
+                  <button
+                    onClick={() => toggleSetting('karmic_enabled', !settings.karmic_enabled)}
+                    className={`relative w-8 h-4 rounded-full transition-colors shrink-0 cursor-pointer ${settings.karmic_enabled ? 'bg-gold/70' : 'bg-dark-border'}`}
+                  >
+                    <span className="absolute top-0.5 w-3 h-3 rounded-full bg-parchment transition-all" style={{ left: settings.karmic_enabled ? '18px' : '2px' }} />
+                  </button>
+                </div>
+
+                {settings.karmic_enabled && (
+                  <>
+                    <div className="pl-3 flex flex-col gap-1.5">
+                      <span className="text-xs text-parchment/50">Режим</span>
+                      {([
+                        { value: 'protection' as const, label: 'Только защита от неудач' },
+                        { value: 'balanced' as const, label: 'Двусторонний баланс' },
+                      ]).map(({ value, label }) => (
+                        <label key={value} className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`karmic-mode-${room.id}`}
+                            checked={settings.karmic_mode === value}
+                            onChange={() => patchSettings({ karmic_mode: value })}
+                            className="accent-gold mt-0.5 shrink-0"
+                          />
+                          <span className="text-xs text-parchment/70">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="pl-3 flex items-center gap-2">
+                      <span className="text-parchment/20 text-xs">└</span>
+                      <span className="flex-1 text-xs text-parchment/70">Только для Мастера</span>
+                      <button
+                        onClick={() => toggleSetting('karmic_dm_only', !settings.karmic_dm_only)}
+                        className={`relative w-8 h-4 rounded-full transition-colors shrink-0 cursor-pointer ${settings.karmic_dm_only ? 'bg-gold/70' : 'bg-dark-border'}`}
+                      >
+                        <span className="absolute top-0.5 w-3 h-3 rounded-full bg-parchment transition-all" style={{ left: settings.karmic_dm_only ? '18px' : '2px' }} />
+                      </button>
+                    </div>
+
+                    <div className="pl-3 flex items-center gap-2">
+                      <span className="text-parchment/20 text-xs">└</span>
+                      <span className="flex-1 text-xs text-parchment/70">Только для d20</span>
+                      <button
+                        onClick={() => toggleSetting('karmic_only_d20', !settings.karmic_only_d20)}
+                        className={`relative w-8 h-4 rounded-full transition-colors shrink-0 cursor-pointer ${settings.karmic_only_d20 ? 'bg-gold/70' : 'bg-dark-border'}`}
+                      >
+                        <span className="absolute top-0.5 w-3 h-3 rounded-full bg-parchment transition-all" style={{ left: settings.karmic_only_d20 ? '18px' : '2px' }} />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
           )}
           <button
             onClick={closePanel}

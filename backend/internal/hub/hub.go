@@ -47,8 +47,16 @@ const (
 	EvSessionClear   = "SESSION_CLEAR"
 	EvDmPresence     = "DM_PRESENCE"
 	EvSettingsUpdate = "SETTINGS_UPDATE"
-	EvKarmicUpdate   = "KARMIC_UPDATE"
 )
+
+type karmaState struct {
+	bad  map[int]int
+	good map[int]int
+}
+
+func newKarmaState() *karmaState {
+	return &karmaState{bad: map[int]int{}, good: map[int]int{}}
+}
 
 type Message struct {
 	Type    string          `json:"type"`
@@ -65,16 +73,14 @@ type Client struct {
 }
 
 type Room struct {
-	code          string
-	clients       map[*Client]struct{}
-	broadcast     chan []byte
-	register      chan *Client
-	unregister    chan *Client
-	mu            sync.RWMutex
-	karmaMu       sync.Mutex
-	karmicEnabled bool
-	karmicDMOnly  bool
-	playerKarma   map[uuid.UUID]int
+	code        string
+	clients     map[*Client]struct{}
+	broadcast   chan []byte
+	register    chan *Client
+	unregister  chan *Client
+	mu          sync.RWMutex
+	karmaMu     sync.Mutex
+	playerKarma map[uuid.UUID]*karmaState
 }
 
 type Hub struct {
@@ -111,7 +117,7 @@ func (h *Hub) getOrCreateRoom(code string) *Room {
 			broadcast:   make(chan []byte, 256),
 			register:    make(chan *Client),
 			unregister:  make(chan *Client),
-			playerKarma: make(map[uuid.UUID]int),
+			playerKarma: make(map[uuid.UUID]*karmaState),
 		}
 		h.rooms[code] = r
 		go r.run()
@@ -623,23 +629,6 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 		}
 		h.broadcastToRoom(c.room, EvSettingsUpdate, settings)
 
-	case EvKarmicUpdate:
-		if c.role != "dm" {
-			return
-		}
-		var p struct {
-			KarmicEnabled bool `json:"karmic_enabled"`
-			KarmicDMOnly  bool `json:"karmic_dm_only"`
-		}
-		if err := json.Unmarshal(msg.Payload, &p); err != nil {
-			return
-		}
-		c.room.karmaMu.Lock()
-		c.room.karmicEnabled = p.KarmicEnabled
-		c.room.karmicDMOnly = p.KarmicDMOnly
-		c.room.karmaMu.Unlock()
-		h.broadcastToRoom(c.room, EvKarmicUpdate, p)
-
 	case EvSessionClear:
 		if c.role != "dm" {
 			return
@@ -676,31 +665,7 @@ func (h *Hub) handleDiceRoll(ctx context.Context, c *Client, roomID uuid.UUID, p
 		return
 	}
 
-	total, rolls := rollDice(p.Notation)
-	karmicApplied := false
-
-	c.room.karmaMu.Lock()
-	if c.room.karmicEnabled {
-		isDM := c.role == "dm"
-		if !c.room.karmicDMOnly || isDM {
-			failures := c.room.playerKarma[c.userID]
-			if failures >= 3 {
-				total2, rolls2 := rollDice(p.Notation)
-				if total2 > total {
-					total, rolls = total2, rolls2
-				}
-				karmicApplied = true
-				c.room.playerKarma[c.userID] = 0
-			} else if avg, ok := avgForNotation(p.Notation); ok {
-				if total < avg {
-					c.room.playerKarma[c.userID]++
-				} else {
-					c.room.playerKarma[c.userID] = 0
-				}
-			}
-		}
-	}
-	c.room.karmaMu.Unlock()
+	total, rolls, karmicApplied := h.karmicRoll(ctx, c, roomID, p.Notation)
 
 	result := map[string]any{
 		"user_id":        c.userID.String(),
@@ -713,6 +678,181 @@ func (h *Hub) handleDiceRoll(ctx context.Context, c *Client, roomID uuid.UUID, p
 	}
 	h.broadcastToRoom(c.room, EvDiceRollResult, result)
 	h.publish(ctx, c.userID, roomID, EvDiceRollResult, result)
+}
+
+// karmicRoll implements the Karmic Dice v1.1 algorithm.
+// For single-die rolls it may bias the RNG based on the player's recent history.
+// For multi-die formulas (n > 1) or d4, it falls back to plain rollDice.
+func (h *Hub) karmicRoll(ctx context.Context, c *Client, roomID uuid.UUID, notation string) (int, []int, bool) {
+	n, m, bonus, ok := parseDiceNotation(notation)
+	if !ok {
+		total, rolls := rollDice(notation)
+		return total, rolls, false
+	}
+
+	// Karma only ever applies to single-die rolls and to d6/d8/d10/d12/d20.
+	// d4 is excluded because its range is too small (per spec).
+	singleEligibleDie := n == 1 && (m == 6 || m == 8 || m == 10 || m == 12 || m == 20)
+
+	if !singleEligibleDie {
+		total, rolls := rollDice(notation)
+		return total, rolls, false
+	}
+
+	gs, err := h.store.GetGameState(ctx, roomID)
+	if err != nil || !gs.KarmicEnabled {
+		total, rolls := rollDice(notation)
+		return total, rolls, false
+	}
+
+	isDM := c.role == "dm"
+	if gs.KarmicDMOnly && !isDM {
+		total, rolls := rollDice(notation)
+		return total, rolls, false
+	}
+	if gs.KarmicOnlyD20 && m != 20 {
+		total, rolls := rollDice(notation)
+		return total, rolls, false
+	}
+
+	c.room.karmaMu.Lock()
+	defer c.room.karmaMu.Unlock()
+
+	ks := c.room.playerKarma[c.userID]
+	if ks == nil {
+		ks = newKarmaState()
+		c.room.playerKarma[c.userID] = ks
+	}
+
+	sBad := ks.bad[m]
+	sGood := ks.good[m]
+
+	// Determine roll bounds from the current counters.
+	minVal, maxVal := karmicBounds(m, sBad, sGood, gs.KarmicMode)
+
+	// Roll with bounds; cap retries to avoid a pathological infinite loop.
+	raw := rand.IntN(m) + 1
+	for retries := 0; (raw < minVal || raw > maxVal) && retries < 32; retries++ {
+		raw = rand.IntN(m) + 1
+	}
+	karmicApplied := minVal > 1 || maxVal < m
+
+	// Update counters based on the RAW value (bonus is not considered).
+	updateKarmicCounters(ks, m, raw, gs.KarmicMode)
+
+	return raw + bonus, []int{raw}, karmicApplied
+}
+
+// karmicBounds returns the [min, max] range the RNG must fall into.
+// Bad-luck protection tightens the lower bound; balanced mode (d20 only)
+// tightens the upper bound on success streaks.
+func karmicBounds(m, sBad, sGood int, mode string) (int, int) {
+	minVal, maxVal := 1, m
+	switch m {
+	case 20:
+		switch {
+		case sBad >= 4:
+			minVal = 10
+		case sBad == 3:
+			minVal = 8
+		case sBad == 2:
+			minVal = 5
+		}
+		if mode == "balanced" {
+			switch {
+			case sGood >= 3:
+				maxVal = 13
+			case sGood == 2:
+				maxVal = 16
+			}
+		}
+	case 12:
+		switch {
+		case sBad >= 3:
+			minVal = 5
+		case sBad == 2:
+			minVal = 3
+		}
+	case 10:
+		switch {
+		case sBad >= 3:
+			minVal = 4
+		case sBad == 2:
+			minVal = 2
+		}
+	case 8:
+		switch {
+		case sBad >= 3:
+			minVal = 3
+		case sBad == 2:
+			minVal = 2
+		}
+	case 6:
+		// d6: both thresholds use min=2 (reroll of 1s).
+		if sBad >= 2 {
+			minVal = 2
+		}
+	}
+	return minVal, maxVal
+}
+
+// updateKarmicCounters increments/resets counters based on the raw die result.
+// Thresholds are per-die-type (spec §3).
+func updateKarmicCounters(ks *karmaState, m, raw int, mode string) {
+	switch m {
+	case 20:
+		if raw <= 7 {
+			ks.bad[m]++
+		} else if raw >= 10 {
+			ks.bad[m] = 0
+		}
+		if mode == "balanced" {
+			if raw >= 15 {
+				ks.good[m]++
+				ks.bad[m] = 0
+			} else if raw <= 10 {
+				ks.good[m] = 0
+			}
+		}
+	case 12:
+		if raw <= 4 {
+			ks.bad[m]++
+		} else if raw >= 6 {
+			ks.bad[m] = 0
+		}
+	case 10:
+		if raw <= 3 {
+			ks.bad[m]++
+		} else if raw >= 5 {
+			ks.bad[m] = 0
+		}
+	case 8:
+		if raw <= 2 {
+			ks.bad[m]++
+		} else if raw >= 4 {
+			ks.bad[m] = 0
+		}
+	case 6:
+		if raw <= 2 {
+			ks.bad[m]++
+		} else if raw >= 3 {
+			ks.bad[m] = 0
+		}
+	}
+}
+
+// ResetKarmicCounters clears all per-player karma state for a room.
+// Called by the game handler after any settings change.
+func (h *Hub) ResetKarmicCounters(code string) {
+	h.mu.RLock()
+	r, ok := h.rooms[code]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+	r.karmaMu.Lock()
+	r.playerKarma = make(map[uuid.UUID]*karmaState)
+	r.karmaMu.Unlock()
 }
 
 func (h *Hub) broadcastToRoom(r *Room, evType string, payload any) {
@@ -868,7 +1008,9 @@ func atoi(s string) int {
 	return n
 }
 
-func avgForNotation(notation string) (int, bool) {
+// parseDiceNotation extracts (n, m, bonus) from strings like "1d20", "2d6+3", "1d8-1".
+// Returns ok=false for malformed input or out-of-range values.
+func parseDiceNotation(notation string) (int, int, int, bool) {
 	dIdx := -1
 	for i, ch := range notation {
 		if ch == 'd' || ch == 'D' {
@@ -877,11 +1019,11 @@ func avgForNotation(notation string) (int, bool) {
 		}
 	}
 	if dIdx < 0 {
-		return 0, false
+		return 0, 0, 0, false
 	}
 	plusIdx, minusIdx := -1, -1
 	for i, ch := range notation {
-		if ch == '+' && i > 0 {
+		if ch == '+' && i > dIdx {
 			plusIdx = i
 		} else if ch == '-' && i > dIdx {
 			minusIdx = i
@@ -904,8 +1046,8 @@ func avgForNotation(notation string) (int, bool) {
 		mStr = notation[dIdx+1:]
 	}
 	m := atoi(mStr)
-	if n <= 0 || m <= 0 {
-		return 0, false
+	if n <= 0 || n > 100 || m <= 0 || m > 1000 {
+		return 0, 0, 0, false
 	}
-	return n*(m+1)/2 + bonus, true
+	return n, m, bonus, true
 }

@@ -32,16 +32,24 @@ type GameState struct {
 	PlayerCanEditSheet  bool            `json:"player_can_edit_sheet"`
 	PlayersSeesDMRolls  bool            `json:"players_see_dm_rolls"`
 	PlayerCanRollDice   bool            `json:"player_can_roll_dice"`
+	KarmicEnabled       bool            `json:"karmic_enabled"`
+	KarmicMode          string          `json:"karmic_mode"`
+	KarmicDMOnly        bool            `json:"karmic_dm_only"`
+	KarmicOnlyD20       bool            `json:"karmic_only_d20"`
 }
 
 type RoomSettings struct {
-	PlayerCanMoveToken bool `json:"player_can_move_token"`
-	PlayerCanRevealFog bool `json:"player_can_reveal_fog"`
-	PlayerCanEditToken bool `json:"player_can_edit_token"`
-	PlayerCanEditHP    bool `json:"player_can_edit_hp"`
-	PlayerCanEditSheet bool `json:"player_can_edit_sheet"`
-	PlayersSeesDMRolls bool `json:"players_see_dm_rolls"`
-	PlayerCanRollDice  bool `json:"player_can_roll_dice"`
+	PlayerCanMoveToken bool   `json:"player_can_move_token"`
+	PlayerCanRevealFog bool   `json:"player_can_reveal_fog"`
+	PlayerCanEditToken bool   `json:"player_can_edit_token"`
+	PlayerCanEditHP    bool   `json:"player_can_edit_hp"`
+	PlayerCanEditSheet bool   `json:"player_can_edit_sheet"`
+	PlayersSeesDMRolls bool   `json:"players_see_dm_rolls"`
+	PlayerCanRollDice  bool   `json:"player_can_roll_dice"`
+	KarmicEnabled      bool   `json:"karmic_enabled"`
+	KarmicMode         string `json:"karmic_mode"`
+	KarmicDMOnly       bool   `json:"karmic_dm_only"`
+	KarmicOnlyD20      bool   `json:"karmic_only_d20"`
 }
 
 type MapToken struct {
@@ -80,7 +88,8 @@ func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, 
 		SELECT room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order,
 		       current_init_index,
 		       player_can_move_token, player_can_reveal_fog, player_can_edit_token,
-		       player_can_edit_hp, player_can_edit_sheet, players_see_dm_rolls, player_can_roll_dice
+		       player_can_edit_hp, player_can_edit_sheet, players_see_dm_rolls, player_can_roll_dice,
+		       karmic_enabled, karmic_mode, karmic_dm_only, karmic_only_d20
 		FROM game_state WHERE room_id = $1`, roomID,
 	).Scan(
 		&gs.RoomID, &gs.MapImageURL, &gs.MapAspect, &gs.GridEnabled, &gs.GridSize,
@@ -88,6 +97,7 @@ func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, 
 		&gs.CurrentInitIndex,
 		&gs.PlayerCanMoveToken, &gs.PlayerCanRevealFog, &gs.PlayerCanEditToken,
 		&gs.PlayerCanEditHP, &gs.PlayerCanEditSheet, &gs.PlayersSeesDMRolls, &gs.PlayerCanRollDice,
+		&gs.KarmicEnabled, &gs.KarmicMode, &gs.KarmicDMOnly, &gs.KarmicOnlyD20,
 	)
 	if err == pgx.ErrNoRows {
 		return GameState{
@@ -106,18 +116,27 @@ func (s *Store) GetGameState(ctx context.Context, roomID uuid.UUID) (GameState, 
 			PlayerCanEditSheet: true,
 			PlayersSeesDMRolls: true,
 			PlayerCanRollDice:  true,
+			KarmicEnabled:      false,
+			KarmicMode:         "protection",
+			KarmicDMOnly:       false,
+			KarmicOnlyD20:      false,
 		}, nil
 	}
 	return gs, err
 }
 
 func (s *Store) UpdateRoomSettings(ctx context.Context, roomID uuid.UUID, settings RoomSettings) error {
+	mode := settings.KarmicMode
+	if mode != "protection" && mode != "balanced" {
+		mode = "protection"
+	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO game_state
 			(room_id, map_image_url, map_aspect, grid_enabled, grid_size, fog_cells, fog_cleared, initiative_order,
 			 player_can_move_token, player_can_reveal_fog, player_can_edit_token,
-			 player_can_edit_hp, player_can_edit_sheet, players_see_dm_rolls, player_can_roll_dice, updated_at)
-		VALUES ($1, '', 1, true, 50, '[]'::jsonb, true, '[]'::jsonb, $2, $3, $4, $5, $6, $7, $8, NOW())
+			 player_can_edit_hp, player_can_edit_sheet, players_see_dm_rolls, player_can_roll_dice,
+			 karmic_enabled, karmic_mode, karmic_dm_only, karmic_only_d20, updated_at)
+		VALUES ($1, '', 1, true, 50, '[]'::jsonb, true, '[]'::jsonb, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
 		ON CONFLICT (room_id) DO UPDATE SET
 			player_can_move_token = EXCLUDED.player_can_move_token,
 			player_can_reveal_fog = EXCLUDED.player_can_reveal_fog,
@@ -126,11 +145,16 @@ func (s *Store) UpdateRoomSettings(ctx context.Context, roomID uuid.UUID, settin
 			player_can_edit_sheet = EXCLUDED.player_can_edit_sheet,
 			players_see_dm_rolls  = EXCLUDED.players_see_dm_rolls,
 			player_can_roll_dice  = EXCLUDED.player_can_roll_dice,
+			karmic_enabled        = EXCLUDED.karmic_enabled,
+			karmic_mode           = EXCLUDED.karmic_mode,
+			karmic_dm_only        = EXCLUDED.karmic_dm_only,
+			karmic_only_d20       = EXCLUDED.karmic_only_d20,
 			updated_at            = NOW()`,
 		roomID,
 		settings.PlayerCanMoveToken, settings.PlayerCanRevealFog, settings.PlayerCanEditToken,
 		settings.PlayerCanEditHP, settings.PlayerCanEditSheet, settings.PlayersSeesDMRolls,
 		settings.PlayerCanRollDice,
+		settings.KarmicEnabled, mode, settings.KarmicDMOnly, settings.KarmicOnlyD20,
 	)
 	return err
 }

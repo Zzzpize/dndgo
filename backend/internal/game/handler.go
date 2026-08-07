@@ -20,6 +20,7 @@ const codeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 type Broadcaster interface {
 	BroadcastToRoomByCode(code string, evType string, payload any)
+	ResetKarmicCounters(code string)
 }
 
 type Handler struct {
@@ -306,6 +307,10 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mode := gs.KarmicMode
+	if mode == "" {
+		mode = "protection"
+	}
 	httputil.JSON(w, http.StatusOK, store.RoomSettings{
 		PlayerCanMoveToken: gs.PlayerCanMoveToken,
 		PlayerCanRevealFog: gs.PlayerCanRevealFog,
@@ -314,6 +319,10 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		PlayerCanEditSheet: gs.PlayerCanEditSheet,
 		PlayersSeesDMRolls: gs.PlayersSeesDMRolls,
 		PlayerCanRollDice:  gs.PlayerCanRollDice,
+		KarmicEnabled:      gs.KarmicEnabled,
+		KarmicMode:         mode,
+		KarmicDMOnly:       gs.KarmicDMOnly,
+		KarmicOnlyD20:      gs.KarmicOnlyD20,
 	})
 }
 
@@ -346,11 +355,16 @@ func (h *Handler) PatchSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if settings.KarmicMode != "protection" && settings.KarmicMode != "balanced" {
+		settings.KarmicMode = "protection"
+	}
+
 	if err := h.store.UpdateRoomSettings(r.Context(), room.ID, settings); err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "internal error", "ERR_INTERNAL")
 		return
 	}
 
+	h.broadcaster.ResetKarmicCounters(code)
 	h.broadcaster.BroadcastToRoomByCode(code, "SETTINGS_UPDATE", settings)
 	httputil.JSON(w, http.StatusOK, settings)
 }

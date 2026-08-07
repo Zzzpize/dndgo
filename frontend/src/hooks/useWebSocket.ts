@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { useGameStore, KarmicSettings } from '@/store/gameStore'
+import { useGameStore } from '@/store/gameStore'
 import { getStoredToken } from '@/lib/api'
 
 const WS_BASE =
@@ -164,9 +164,6 @@ function dispatch(msg: WsMsg) {
       break
     case 'ROOM_DELETED':
       s.setRoomDeleted(true)
-      break
-    case 'KARMIC_UPDATE':
-      s.setKarmicSettings(msg.payload as KarmicSettings)
       break
   }
 }
