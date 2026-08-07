@@ -44,6 +44,14 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
   const isPinchingRef = useRef(false)
   const lastPinchDistRef = useRef(0)
 
+  // Fog: pending outbound batches (DM only). Flushed by an interval every ~60ms.
+  const fogSendBufferRef = useRef<{ reveal: Array<{ rel_x: number; rel_y: number; radius: number; type: 'reveal' }>, hide: Array<{ rel_x: number; rel_y: number; radius: number; type: 'hide' }> }>({ reveal: [], hide: [] })
+  // Fog: incremental rendering state.
+  const fogGroupRef = useRef<Konva.Group | null>(null)
+  const fogRenderedCountRef = useRef(0)
+  const fogRenderedClearedRef = useRef(true)
+  const fogCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const myUserId = useAuthStore((s) => s.user?.id)
   const tokens = useGameStore((s) => s.tokens)
   const gameState = useGameStore((s) => s.gameState)
@@ -83,6 +91,18 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     }
   }
 
+  const flushFogBuffer = useCallback(() => {
+    const buf = fogSendBufferRef.current
+    if (buf.reveal.length > 0) {
+      sendMessageRef.current('FOG_REVEAL', buf.reveal)
+      buf.reveal = []
+    }
+    if (buf.hide.length > 0) {
+      sendMessageRef.current('FOG_HIDE', buf.hide)
+      buf.hide = []
+    }
+  }, [])
+
   const revealFogAtPointer = useCallback((stage: Konva.Stage) => {
     const wp = getWorldPos(stage)
     if (!wp) return
@@ -95,7 +115,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const key = `${Math.round(wp.x / (gridSize * 0.5))},${Math.round(wp.y / (gridSize * 0.5))}`
     if (lastFogCellRef.current === key) return
     lastFogCellRef.current = key
-    sendMessageRef.current('FOG_REVEAL', [{ rel_x, rel_y, radius: gridSize * 1.5, type: 'reveal' }])
+    fogSendBufferRef.current.reveal.push({ rel_x, rel_y, radius: gridSize * 1.5, type: 'reveal' })
   }, [])
 
   const hideFogAtPointer = useCallback((stage: Konva.Stage) => {
@@ -110,8 +130,14 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const key = `${Math.round(wp.x / (gridSize * 0.5))},${Math.round(wp.y / (gridSize * 0.5))}`
     if (lastFogCellRef.current === key) return
     lastFogCellRef.current = key
-    sendMessageRef.current('FOG_HIDE', [{ rel_x, rel_y, radius: gridSize * 1.5, type: 'hide' }])
+    fogSendBufferRef.current.hide.push({ rel_x, rel_y, radius: gridSize * 1.5, type: 'hide' })
   }, [])
+
+  // Periodic flush of buffered fog paint. ~60ms → ~16 packets/sec at most.
+  useEffect(() => {
+    const id = setInterval(flushFogBuffer, 60)
+    return () => clearInterval(id)
+  }, [flushFogBuffer])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -204,9 +230,14 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     })
 
     stage.on('mouseup touchend', () => {
+      const tool = activeToolRef.current
+      const wasPainting = isPaintingRef.current
       isPaintingRef.current = false
       lastFogCellRef.current = ''
-      if (activeToolRef.current === 'ruler') {
+      if (wasPainting && (tool === 'fog' || tool === 'fog_hide')) {
+        flushFogBuffer()
+      }
+      if (tool === 'ruler') {
         rulerStartRef.current = null
         sendMessageRef.current('RULER_UPDATE', null)
       }
@@ -284,7 +315,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
       layersRef.current = null
       tokenGroupsRef.current.clear()
     }
-  }, [revealFogAtPointer, hideFogAtPointer])
+  }, [revealFogAtPointer, hideFogAtPointer, flushFogBuffer])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -336,46 +367,71 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
   useEffect(() => {
     const layer = layersRef.current?.fog
     if (!layer) return
-    layer.destroyChildren()
-    layer.opacity(1)
-
-    if (gameState?.fog_cleared ?? true) {
-      layer.batchDraw()
-      return
-    }
 
     const fogOpacity = role === 'dm' ? 0.45 : 1
     const worldH = worldHRef.current
+    const cleared = gameState?.fog_cleared ?? true
     const paths = gameState?.fog_paths ?? []
 
-    const fogGroup = new Konva.Group()
-    fogGroup.add(new Konva.Rect({ x: 0, y: 0, width: WORLD_W, height: worldH, fill: 'black' }))
+    // Full rebuild only when the world/aspect/cleared flag flips, or when the
+    // path array shrinks (undo / hard reset). Otherwise we append the tail.
+    const needFullRebuild =
+      cleared !== fogRenderedClearedRef.current ||
+      paths.length < fogRenderedCountRef.current ||
+      !fogGroupRef.current
 
-    for (const path of paths) {
-      if (!path.type || path.type === 'reveal') {
-        fogGroup.add(new Konva.Circle({
-          x: path.rel_x * WORLD_W,
-          y: path.rel_y * worldH,
-          radius: path.radius,
-          fill: 'black',
-          globalCompositeOperation: 'destination-out',
-        }))
-      } else {
-        fogGroup.add(new Konva.Circle({
-          x: path.rel_x * WORLD_W,
-          y: path.rel_y * worldH,
-          radius: path.radius,
-          fill: 'black',
-        }))
+    if (needFullRebuild) {
+      layer.destroyChildren()
+      fogGroupRef.current = null
+      fogRenderedCountRef.current = 0
+      fogRenderedClearedRef.current = cleared
+
+      if (cleared) {
+        layer.batchDraw()
+        return
+      }
+
+      const g = new Konva.Group({ opacity: fogOpacity })
+      g.add(new Konva.Rect({ x: 0, y: 0, width: WORLD_W, height: worldH, fill: 'black' }))
+      layer.add(g)
+      fogGroupRef.current = g
+    }
+
+    // Fast path: append only new circles to the existing group.
+    if (!cleared && fogGroupRef.current) {
+      const g = fogGroupRef.current
+      g.opacity(fogOpacity)
+      const start = fogRenderedCountRef.current
+      if (paths.length > start) {
+        // If cached, clear it before mutating children — cache is a snapshot.
+        if (g.isCached()) g.clearCache()
+        for (let i = start; i < paths.length; i++) {
+          const p = paths[i]
+          g.add(new Konva.Circle({
+            x: p.rel_x * WORLD_W,
+            y: p.rel_y * worldH,
+            radius: p.radius,
+            fill: 'black',
+            globalCompositeOperation: (!p.type || p.type === 'reveal') ? 'destination-out' : 'source-over',
+          }))
+        }
+        fogRenderedCountRef.current = paths.length
       }
     }
 
-    if (worldH > 0) {
-      fogGroup.cache({ x: 0, y: 0, width: WORLD_W, height: worldH, pixelRatio: 1 })
-    }
-    fogGroup.opacity(fogOpacity)
-    layer.add(fogGroup)
     layer.batchDraw()
+
+    // Re-rasterize the group once the stream goes quiet — restores fast redraws
+    // during zoom/pan without paying the cost per incoming path.
+    if (fogCacheTimerRef.current) clearTimeout(fogCacheTimerRef.current)
+    if (!cleared && fogGroupRef.current && worldH > 0) {
+      fogCacheTimerRef.current = setTimeout(() => {
+        const g = fogGroupRef.current
+        if (!g) return
+        g.cache({ x: 0, y: 0, width: WORLD_W, height: worldH, pixelRatio: 1 })
+        layer.batchDraw()
+      }, 300)
+    }
   }, [gameState?.fog_paths, gameState?.fog_cleared, gameState?.map_aspect, role])
 
   useEffect(() => {
