@@ -368,12 +368,15 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const layer = layersRef.current?.fog
     if (!layer) return
 
-    // Opacity lives on the layer so it composes AFTER the black rect +
-    // destination-out reveals are combined. Applying opacity on the group
-    // would break destination-out (alpha < 1 fails to fully punch through)
-    // and cause hide circles to double up in the uncached window.
+    // Opacity is set via CSS on the layer's DOM canvas. Any Konva-level
+    // opacity (group or layer) ends up as globalAlpha during rendering,
+    // which corrupts destination-out (partial reveals leave residue) and
+    // makes overlapping hide circles stack darker. CSS opacity is a
+    // post-composite browser step and cannot affect canvas compositing.
     const fogOpacity = role === 'dm' ? 0.45 : 1
-    layer.opacity(fogOpacity)
+    layer.opacity(1)
+    const canvasEl = layer.getCanvas()._canvas
+    if (canvasEl) canvasEl.style.opacity = String(fogOpacity)
 
     const worldH = worldHRef.current
     const cleared = gameState?.fog_cleared ?? true
