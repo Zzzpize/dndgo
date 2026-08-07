@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { NPC, MapToken } from '@/store/gameStore'
+import { NPC, MapToken, effectiveNpc } from '@/store/gameStore'
 import { parseMaxHP } from '@/lib/maxhp'
 
 function applyDelta(delta: number, currentHp: number, tempHp: number, maxHpStr: string) {
@@ -69,7 +69,8 @@ function ActionBlock({ label, items }: { label: string; items: string[] }) {
   )
 }
 
-export function NpcSheet({ npc, token, sendMessage, role }: Props) {
+export function NpcSheet({ npc: baseNpc, token, sendMessage, role }: Props) {
+  const npc = effectiveNpc(baseNpc, token)
   const maxHp = token.max_hp ?? npc.max_hp
   const { numeric: maxHpNum, isInf: maxHpIsInf } = parseMaxHP(maxHp)
   const currentHp = token.current_hp ?? maxHpNum

@@ -565,18 +565,19 @@ func (h *Hub) handleMessage(c *Client, roomID uuid.UUID, msg Message) {
 			return
 		}
 		var p struct {
-			ID          uuid.UUID `json:"id"`
-			Name        string    `json:"name"`
-			Disposition string    `json:"disposition"`
-			MaxHP       *string   `json:"max_hp"`
-			CurrentHP   *int      `json:"current_hp"`
-			TempHP      int       `json:"temp_hp"`
-			Size        int       `json:"size"`
+			ID           uuid.UUID       `json:"id"`
+			Name         string          `json:"name"`
+			Disposition  string          `json:"disposition"`
+			MaxHP        *string         `json:"max_hp"`
+			CurrentHP    *int            `json:"current_hp"`
+			TempHP       int             `json:"temp_hp"`
+			Size         int             `json:"size"`
+			NpcOverrides json.RawMessage `json:"npc_overrides"`
 		}
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
 			return
 		}
-		token, err := h.store.UpdateToken(ctx, p.ID, p.Name, p.Disposition, p.MaxHP, p.CurrentHP, p.TempHP, p.Size)
+		token, err := h.store.UpdateToken(ctx, p.ID, p.Name, p.Disposition, p.MaxHP, p.CurrentHP, p.TempHP, p.Size, p.NpcOverrides)
 		if err != nil {
 			log.Printf("hub: edit token: %v", err)
 			return
@@ -916,9 +917,9 @@ func (h *Hub) SendFullState(ctx context.Context, c *Client, roomID uuid.UUID) {
 	}
 
 	state := map[string]any{
-		"game_state":  gs,
-		"tokens":      tokens,
-		"characters":  characters,
+		"game_state": gs,
+		"tokens":     tokens,
+		"characters": characters,
 	}
 	data, err := json.Marshal(state)
 	if err != nil {

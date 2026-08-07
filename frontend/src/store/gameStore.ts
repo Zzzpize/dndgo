@@ -2,6 +2,8 @@
 
 import { create } from 'zustand'
 
+export type NpcOverrides = Partial<Omit<NPC, 'id' | 'user_id' | 'room_id' | 'folder_id' | 'created_at'>>
+
 export interface MapToken {
   id: string
   room_id: string
@@ -16,6 +18,13 @@ export interface MapToken {
   max_hp?: string
   temp_hp: number
   size: number
+  npc_overrides?: NpcOverrides | null
+}
+
+// Effective NPC data for a token: base NPC merged with per-token overrides.
+export function effectiveNpc(npc: NPC, token?: MapToken | null): NPC {
+  if (!token?.npc_overrides) return npc
+  return { ...npc, ...token.npc_overrides } as NPC
 }
 
 export interface NpcFolder {

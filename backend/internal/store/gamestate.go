@@ -53,19 +53,20 @@ type RoomSettings struct {
 }
 
 type MapToken struct {
-	ID          uuid.UUID  `json:"id"`
-	RoomID      uuid.UUID  `json:"room_id"`
-	TokenType   string     `json:"token_type"`
-	CharacterID *uuid.UUID `json:"character_id,omitempty"`
-	NpcID       *uuid.UUID `json:"npc_id,omitempty"`
-	Name        string     `json:"name"`
-	RelX        float64    `json:"rel_x"`
-	RelY        float64    `json:"rel_y"`
-	Disposition string     `json:"disposition"`
-	CurrentHP   *int       `json:"current_hp,omitempty"`
-	MaxHP       *string    `json:"max_hp,omitempty"`
-	TempHP      int        `json:"temp_hp"`
-	Size        int        `json:"size"`
+	ID           uuid.UUID       `json:"id"`
+	RoomID       uuid.UUID       `json:"room_id"`
+	TokenType    string          `json:"token_type"`
+	CharacterID  *uuid.UUID      `json:"character_id,omitempty"`
+	NpcID        *uuid.UUID      `json:"npc_id,omitempty"`
+	Name         string          `json:"name"`
+	RelX         float64         `json:"rel_x"`
+	RelY         float64         `json:"rel_y"`
+	Disposition  string          `json:"disposition"`
+	CurrentHP    *int            `json:"current_hp,omitempty"`
+	MaxHP        *string         `json:"max_hp,omitempty"`
+	TempHP       int             `json:"temp_hp"`
+	Size         int             `json:"size"`
+	NpcOverrides json.RawMessage `json:"npc_overrides,omitempty"`
 }
 
 type TokenInput struct {
@@ -194,12 +195,13 @@ func (s *Store) UpdateMapImageURL(ctx context.Context, roomID uuid.UUID, url str
 	return err
 }
 
-const tokenCols = `id, room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp, temp_hp, size`
+const tokenCols = `id, room_id, token_type, character_id, npc_id, name, rel_x, rel_y, disposition, current_hp, max_hp, temp_hp, size, npc_overrides`
 
 func scanToken(row interface{ Scan(...any) error }) (MapToken, error) {
 	var t MapToken
 	err := row.Scan(&t.ID, &t.RoomID, &t.TokenType, &t.CharacterID, &t.NpcID,
-		&t.Name, &t.RelX, &t.RelY, &t.Disposition, &t.CurrentHP, &t.MaxHP, &t.TempHP, &t.Size)
+		&t.Name, &t.RelX, &t.RelY, &t.Disposition, &t.CurrentHP, &t.MaxHP, &t.TempHP, &t.Size,
+		&t.NpcOverrides)
 	return t, err
 }
 
@@ -261,15 +263,19 @@ func (s *Store) UpdateTokenHP(ctx context.Context, tokenID uuid.UUID, currentHP 
 	return scanToken(row)
 }
 
-func (s *Store) UpdateToken(ctx context.Context, tokenID uuid.UUID, name, disposition string, maxHP *string, currentHP *int, tempHP, size int) (MapToken, error) {
+func (s *Store) UpdateToken(ctx context.Context, tokenID uuid.UUID, name, disposition string, maxHP *string, currentHP *int, tempHP, size int, npcOverrides json.RawMessage) (MapToken, error) {
 	if size < 1 {
 		size = 1
 	}
+	var overrides any
+	if len(npcOverrides) > 0 {
+		overrides = string(npcOverrides)
+	}
 	row := s.pool.QueryRow(ctx, `
-		UPDATE map_tokens SET name = $2, disposition = $3, max_hp = $4, current_hp = $5, temp_hp = $6, size = $7
+		UPDATE map_tokens SET name = $2, disposition = $3, max_hp = $4, current_hp = $5, temp_hp = $6, size = $7, npc_overrides = $8::jsonb
 		WHERE id = $1
 		RETURNING `+tokenCols,
-		tokenID, name, disposition, maxHP, currentHP, tempHP, size,
+		tokenID, name, disposition, maxHP, currentHP, tempHP, size, overrides,
 	)
 	return scanToken(row)
 }

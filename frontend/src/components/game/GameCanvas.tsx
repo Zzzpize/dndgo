@@ -410,7 +410,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
         (char?.player_active ?? true) &&
         (gameState?.player_can_move_token ?? true)
       ))
-      const tokenRadius = Math.max(10, gridSize * (token.size ?? 1) * 0.45)
+      const tokenRadius = gridSize * (token.size ?? 1) * 0.45
       const color = token.token_type === 'pc' ? PC_COLOR : (DISPOSITION_COLOR[token.disposition] ?? DISPOSITION_COLOR.neutral)
 
       const hpPct = char
@@ -566,7 +566,7 @@ export default function GameCanvas({ sendMessage, roomCode }: Props) {
     const s = useGameStore.getState()
     const gridSize = s.gameState?.grid_size ?? 50
     for (const token of s.tokens) {
-      const tokenRadius = Math.max(10, gridSize * (token.size ?? 1) * 0.45)
+      const tokenRadius = gridSize * (token.size ?? 1) * 0.45
       const tx = token.rel_x * WORLD_W
       const ty = token.rel_y * worldHRef.current
       const dist = Math.sqrt((worldX - tx) ** 2 + (worldY - ty) ** 2)

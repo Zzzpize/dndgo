@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import api from '@/lib/api'
 import { parseMaxHP } from '@/lib/maxhp'
-import { NPC, MapToken, useGameStore } from '@/store/gameStore'
+import { NPC, MapToken, useGameStore, effectiveNpc, NpcOverrides } from '@/store/gameStore'
 
 function applyDelta(delta: number, currentHp: number, tempHp: number, maxHpStr: string) {
   if (delta < 0) {
@@ -175,7 +175,7 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
 
   const addNpc = useGameStore((s) => s.addNpc)
   const updateNpc = useGameStore((s) => s.updateNpc)
-  const [form, setForm] = useState<NpcForm>(() => npc ? fromNPC(npc) : defaultForm())
+  const [form, setForm] = useState<NpcForm>(() => npc ? fromNPC(effectiveNpc(npc, token)) : defaultForm())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -221,6 +221,51 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
 
     if (token && sendMessage && npc) {
       const clampedHp = maxHpIsInf ? (token.current_hp ?? 0) : Math.min(token.current_hp ?? numMaxHp, numMaxHp)
+
+      const misc: Record<string, string> = {}
+      const miscMap: [string, keyof NpcForm][] = [
+        ['Особенности',           'features'],
+        ['Спасброски',            'saving_throws'],
+        ['Навыки',                'skills'],
+        ['Иммунитет к урону',     'damage_immunities'],
+        ['Иммунитет к состоянию', 'condition_immunities'],
+        ['Сопротивление урону',   'damage_resistances'],
+        ['Уязвимость к урону',    'damage_vulnerabilities'],
+        ['Чувства',               'senses'],
+        ['Языки',                 'languages'],
+        ['Опасность',             'challenge'],
+      ]
+      for (const [label, field] of miscMap) {
+        const val = (form[field] as string).trim()
+        if (val) misc[label] = val
+      }
+
+      const overrides: NpcOverrides = {
+        name:           form.name.trim(),
+        disposition:    form.disposition,
+        ac:             form.ac || '10',
+        max_hp:         form.max_hp.trim(),
+        speed:          form.speed,
+        type_alignment: form.type_alignment,
+        size:           form.size,
+        abilities: {
+          str: parseInt(form.abilities.str) || 10,
+          dex: parseInt(form.abilities.dex) || 10,
+          con: parseInt(form.abilities.con) || 10,
+          int: parseInt(form.abilities.int) || 10,
+          wis: parseInt(form.abilities.wis) || 10,
+          cha: parseInt(form.abilities.cha) || 10,
+        },
+        misc,
+        actions:           toLines(form.actionsText),
+        bonus_actions:     toLines(form.bonusActionsText),
+        reactions:         toLines(form.reactionsText),
+        legendary_actions: toLines(form.legendaryActionsText),
+        lair_actions:      toLines(form.lairActionsText),
+        regional_effects:  toLines(form.regionalEffectsText),
+        mythic_actions:    toLines(form.mythicActionsText),
+      }
+
       sendMessage('TOKEN_EDIT', {
         id: token.id,
         name: token.name,
@@ -229,6 +274,7 @@ export function NpcModal({ roomCode, npc, token, sendMessage, role, onClose, onS
         current_hp: clampedHp,
         temp_hp: token.temp_hp,
         size: form.size,
+        npc_overrides: overrides,
       })
       onSaved(npc)
       return
